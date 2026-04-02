@@ -88,6 +88,8 @@ terminal:
   daytona_image: "nikolaik/python-nodejs:python3.11-nodejs20"               # Container image for Daytona backend
 ```
 
+For cloud sandboxes such as Modal and Daytona, `container_persistent: true` means Hermes will try to preserve filesystem state across sandbox recreation. It does not promise that the same live sandbox, PID space, or background processes will still be running later.
+
 ### Backend Overview
 
 | Backend | Where commands run | Isolation | Best for |
@@ -188,7 +190,7 @@ terminal:
 
 **Required:** Either `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` environment variables, or a `~/.modal.toml` config file.
 
-**Persistence:** When enabled, the sandbox filesystem is snapshotted on cleanup and restored on next session. Snapshots are tracked in `~/.hermes/modal_snapshots.json`.
+**Persistence:** When enabled, the sandbox filesystem is snapshotted on cleanup and restored on next session. Snapshots are tracked in `~/.hermes/modal_snapshots.json`. This preserves filesystem state, not live processes, PID space, or background jobs.
 
 **Credential files:** Automatically mounted from `~/.hermes/` (OAuth tokens, etc.) and synced before each command.
 
@@ -243,7 +245,7 @@ If terminal commands fail immediately or the terminal tool is reported as disabl
 - **Daytona** — Needs `DAYTONA_API_KEY`. The Daytona SDK handles server URL configuration.
 - **Singularity** — Needs `apptainer` or `singularity` in `$PATH`. Common on HPC clusters.
 
-When in doubt, set `terminal.backend` back to `local` and verify commands run there first.
+When in doubt, set `terminal.backend` back to `local` and verify that commands run there first.
 
 ### Docker Volume Mounts
 
@@ -359,6 +361,26 @@ memory:
   memory_char_limit: 2200   # ~800 tokens
   user_char_limit: 1375     # ~500 tokens
 ```
+
+## File Read Safety
+
+Controls how much content a single `read_file` call can return. Reads that exceed the limit are rejected with an error telling the agent to use `offset` and `limit` for a smaller range. This prevents a single read of a minified JS bundle or large data file from flooding the context window.
+
+```yaml
+file_read_max_chars: 100000  # default — ~25-35K tokens
+```
+
+Raise it if you're on a model with a large context window and frequently read big files. Lower it for small-context models to keep reads efficient:
+
+```yaml
+# Large context model (200K+)
+file_read_max_chars: 200000
+
+# Small local model (16K context)
+file_read_max_chars: 30000
+```
+
+The agent also deduplicates file reads automatically — if the same file region is read twice and the file hasn't changed, a lightweight stub is returned instead of re-sending the content. This resets on context compression so the agent can re-read files after their content is summarized away.
 
 ## Git Worktree Isolation
 
@@ -477,6 +499,18 @@ On messaging platforms, a plain-text notification is sent:
 If auto-compression is disabled, the warning tells you context may be truncated instead.
 
 Context pressure is automatic — no configuration needed. It fires purely as a user-facing notification and does not modify the message stream or inject anything into the model's context.
+
+## Credential Pool Strategies
+
+When you have multiple API keys or OAuth tokens for the same provider, configure the rotation strategy:
+
+```yaml
+credential_pool_strategies:
+  openrouter: round_robin    # cycle through keys evenly
+  anthropic: least_used      # always pick the least-used key
+```
+
+Options: `fill_first` (default), `round_robin`, `least_used`, `random`. See [Credential Pools](/docs/user-guide/features/credential-pools) for full documentation.
 
 ## Auxiliary Models
 
@@ -860,12 +894,15 @@ When enabled, responses appear token-by-token inside a streaming box. Tool calls
 ```yaml
 streaming:
   enabled: true           # Enable progressive message editing
+  transport: edit         # "edit" (progressive message editing) or "off"
   edit_interval: 0.3      # Seconds between message edits
   buffer_threshold: 40    # Characters before forcing an edit flush
   cursor: " ▉"            # Cursor shown during streaming
 ```
 
-When enabled, the bot sends a message on the first token, then progressively edits it as more tokens arrive. Platforms that don't support message editing (Signal, Email) gracefully skip streaming and deliver the final response normally.
+When enabled, the bot sends a message on the first token, then progressively edits it as more tokens arrive. Platforms that don't support message editing (Signal, Email, Home Assistant) are auto-detected on the first attempt — streaming is gracefully disabled for that session with no flood of messages.
+
+**Overflow handling:** If the streamed text exceeds the platform's message length limit (~4096 chars), the current message is finalized and a new one starts automatically.
 
 :::note
 Streaming is disabled by default. Enable it in `~/.hermes/config.yaml` to try the streaming UX.
@@ -929,23 +966,6 @@ Usage: type `/status`, `/disk`, `/update`, or `/gpu` in the CLI or any messaging
 - **Type** — only `exec` is supported (runs a shell command); other types show an error
 - **Works everywhere** — CLI, Telegram, Discord, Slack, WhatsApp, Signal, Email, Home Assistant
 
-## Gateway Streaming
-
-Enable progressive token delivery on messaging platforms. When streaming is enabled, responses appear character-by-character in Telegram, Discord, and Slack via message editing, rather than waiting for the full response.
-
-```yaml
-streaming:
-  enabled: false              # Enable streaming token delivery (default: off)
-  transport: edit             # "edit" (progressive message editing) or "off"
-  edit_interval: 0.3          # Min seconds between message edits
-  buffer_threshold: 40        # Characters accumulated before forcing an edit
-  cursor: " ▉"               # Cursor character shown during streaming
-```
-
-**Platform support:** Telegram, Discord, and Slack support edit-based streaming. Platforms that don't support message editing (Signal, Email, Home Assistant) are auto-detected on the first attempt — streaming is gracefully disabled for that session with no flood of messages.
-
-**Overflow handling:** If the streamed text exceeds the platform's message length limit (~4096 chars), the current message is finalized and a new one starts automatically.
-
 ## Human Delay
 
 Simulate human-like response pacing in messaging platforms:
@@ -998,6 +1018,8 @@ browser:
   inactivity_timeout: 120        # Seconds before auto-closing idle sessions
   command_timeout: 30             # Timeout in seconds for browser commands (screenshot, navigate, etc.)
   record_sessions: false         # Auto-record browser sessions as WebM videos to ~/.hermes/browser_recordings/
+  camofox:
+    managed_persistence: false   # When true, Camofox sessions persist cookies/logins across restarts
 ```
 
 The browser toolset supports multiple providers. See the [Browser feature page](/docs/user-guide/features/browser) for details on Browserbase, Browser Use, and local Chrome CDP setup.
