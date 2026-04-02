@@ -63,18 +63,53 @@ def _honcho_is_configured_for_doctor() -> bool:
         return False
 
 
+def _gateway_has_enabled_platforms_for_doctor() -> bool:
+    """Return True when at least one messaging platform is enabled in gateway config."""
+    try:
+        from gateway.config import load_gateway_config
+
+        cfg = load_gateway_config()
+        return any(platform_cfg.enabled for platform_cfg in cfg.platforms.values())
+    except Exception:
+        return False
+
+
+def _gateway_is_running_for_doctor() -> bool:
+    """Return True when the gateway daemon is currently running."""
+    try:
+        from gateway.status import is_gateway_running
+
+        return bool(is_gateway_running())
+    except Exception:
+        return False
+
+
 def _apply_doctor_tool_availability_overrides(available: list[str], unavailable: list[dict]) -> tuple[list[str], list[dict]]:
     """Adjust runtime-gated tool availability for doctor diagnostics."""
-    if not _honcho_is_configured_for_doctor():
-        return available, unavailable
-
     updated_available = list(available)
     updated_unavailable = []
     for item in unavailable:
-        if item.get("name") == "honcho":
-            if "honcho" not in updated_available:
+        name = item.get("name")
+
+        if name == "honcho":
+            # The dedicated Honcho section below gives the real status with
+            # setup/connection details. Avoid a duplicate generic warning here.
+            if _honcho_is_configured_for_doctor() and "honcho" not in updated_available:
                 updated_available.append("honcho")
             continue
+        if name == "messaging":
+            if _gateway_is_running_for_doctor():
+                if "messaging" not in updated_available:
+                    updated_available.append("messaging")
+                continue
+            item = dict(item)
+            if _gateway_has_enabled_platforms_for_doctor():
+                item["doctor_detail"] = "(gateway not running — run: python hermes gateway start)"
+            else:
+                item["doctor_detail"] = "(no messaging platforms configured — run: python hermes setup gateway)"
+        elif name == "code_execution" and sys.platform == "win32":
+            item = dict(item)
+            item["doctor_detail"] = "(Windows unsupported — POSIX Unix sockets required)"
         updated_unavailable.append(item)
     return updated_available, updated_unavailable
 
@@ -657,7 +692,10 @@ def run_doctor(args):
         
         for item in unavailable:
             env_vars = item.get("missing_vars") or item.get("env_vars") or []
-            if env_vars:
+            doctor_detail = item.get("doctor_detail")
+            if doctor_detail:
+                check_warn(item["name"], doctor_detail)
+            elif env_vars:
                 vars_str = ", ".join(env_vars)
                 check_warn(item["name"], f"(missing {vars_str})")
             else:

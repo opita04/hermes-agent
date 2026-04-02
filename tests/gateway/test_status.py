@@ -36,7 +36,7 @@ class TestGatewayPidState:
             "start_time": 123,
         }))
 
-        monkeypatch.setattr(status.os, "kill", lambda pid, sig: None)
+        monkeypatch.setattr(status, "_pid_exists", lambda pid: True)
         monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123)
         monkeypatch.setattr(status, "_read_process_cmdline", lambda pid: None)
 
@@ -52,7 +52,7 @@ class TestGatewayPidState:
             "start_time": 123,
         }))
 
-        monkeypatch.setattr(status.os, "kill", lambda pid, sig: None)
+        monkeypatch.setattr(status, "_pid_exists", lambda pid: True)
         monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123)
         monkeypatch.setattr(
             status,
@@ -115,7 +115,7 @@ class TestScopedLocks:
             "kind": "hermes-gateway",
         }))
 
-        monkeypatch.setattr(status.os, "kill", lambda pid, sig: None)
+        monkeypatch.setattr(status, "_pid_exists", lambda pid: True)
         monkeypatch.setattr(status, "_get_process_start_time", lambda pid: 123)
 
         acquired, existing = status.acquire_scoped_lock("telegram-bot-token", "secret", metadata={"platform": "telegram"})
@@ -133,10 +133,7 @@ class TestScopedLocks:
             "kind": "hermes-gateway",
         }))
 
-        def fake_kill(pid, sig):
-            raise ProcessLookupError
-
-        monkeypatch.setattr(status.os, "kill", fake_kill)
+        monkeypatch.setattr(status, "_pid_exists", lambda pid: False)
 
         acquired, existing = status.acquire_scoped_lock("telegram-bot-token", "secret", metadata={"platform": "telegram"})
 
@@ -144,6 +141,41 @@ class TestScopedLocks:
         payload = json.loads(lock_path.read_text())
         assert payload["pid"] == os.getpid()
         assert payload["metadata"]["platform"] == "telegram"
+
+    def test_pid_exists_windows_uses_openprocess(self, monkeypatch):
+        class _Kernel32:
+            def __init__(self):
+                self.open_calls = []
+                self.closed = []
+
+            def OpenProcess(self, access, inherit, pid):
+                self.open_calls.append((access, inherit, pid))
+                return 123
+
+            def CloseHandle(self, handle):
+                self.closed.append(handle)
+                return 1
+
+        kernel32 = _Kernel32()
+        monkeypatch.setattr(status.sys, "platform", "win32")
+        monkeypatch.setattr(status.ctypes, "windll", type("Windll", (), {"kernel32": kernel32})())
+
+        assert status._pid_exists(4242) is True
+        assert kernel32.open_calls == [(0x1000, False, 4242)]
+        assert kernel32.closed == [123]
+
+    def test_pid_exists_windows_false_when_openprocess_fails(self, monkeypatch):
+        class _Kernel32:
+            def OpenProcess(self, access, inherit, pid):
+                return 0
+
+            def CloseHandle(self, handle):
+                raise AssertionError("CloseHandle should not be called for invalid handles")
+
+        monkeypatch.setattr(status.sys, "platform", "win32")
+        monkeypatch.setattr(status.ctypes, "windll", type("Windll", (), {"kernel32": _Kernel32()})())
+
+        assert status._pid_exists(4242) is False
 
     def test_release_scoped_lock_only_removes_current_owner(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(tmp_path / "locks"))

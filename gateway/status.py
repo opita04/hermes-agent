@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import sys
+import ctypes
 from datetime import datetime, timezone
 from pathlib import Path
 from hermes_constants import get_hermes_home
@@ -65,6 +66,27 @@ def _get_process_start_time(pid: int) -> Optional[int]:
         return int(stat_path.read_text().split()[21])
     except (FileNotFoundError, IndexError, PermissionError, ValueError, OSError):
         return None
+
+
+def _pid_exists(pid: int) -> bool:
+    """Return True when a PID currently exists.
+
+    On Windows, ``os.kill(pid, 0)`` is not reliable and can raise
+    ``WinError 11`` for valid processes, so use ``OpenProcess`` instead.
+    """
+    if sys.platform == "win32":
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if handle:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        return False
+
+    try:
+        os.kill(pid, 0)  # signal 0 = existence check, no actual signal sent
+        return True
+    except (ProcessLookupError, PermissionError, OSError):
+        return False
 
 
 def _read_process_cmdline(pid: int) -> Optional[str]:
@@ -179,64 +201,6 @@ def _read_pid_record() -> Optional[dict]:
     return None
 
 
-def write_pid_file() -> None:
-    """Write the current process PID and metadata to the gateway PID file."""
-    _write_json_file(_get_pid_path(), _build_pid_record())
-
-
-def write_runtime_status(
-    *,
-    gateway_state: Optional[str] = None,
-    exit_reason: Optional[str] = None,
-    platform: Optional[str] = None,
-    platform_state: Optional[str] = None,
-    error_code: Optional[str] = None,
-    error_message: Optional[str] = None,
-) -> None:
-    """Persist gateway runtime health information for diagnostics/status."""
-    path = _get_runtime_status_path()
-    payload = _read_json_file(path) or _build_runtime_status_record()
-    payload.setdefault("platforms", {})
-    payload.setdefault("kind", _GATEWAY_KIND)
-    payload["pid"] = os.getpid()
-    payload["start_time"] = _get_process_start_time(os.getpid())
-    payload["updated_at"] = _utc_now_iso()
-
-    if gateway_state is not None:
-        payload["gateway_state"] = gateway_state
-    if exit_reason is not None:
-        payload["exit_reason"] = exit_reason
-
-    if platform is not None:
-        platform_payload = payload["platforms"].get(platform, {})
-        if platform_state is not None:
-            platform_payload["state"] = platform_state
-        if error_code is not None:
-            platform_payload["error_code"] = error_code
-        if error_message is not None:
-            platform_payload["error_message"] = error_message
-        platform_payload["updated_at"] = _utc_now_iso()
-        payload["platforms"][platform] = platform_payload
-
-    _write_json_file(path, payload)
-
-
-def read_runtime_status() -> Optional[dict[str, Any]]:
-    """Read the persisted gateway runtime health/status information."""
-    return _read_json_file(_get_runtime_status_path())
-
-
-def remove_pid_file() -> None:
-    """Remove the gateway PID file if it exists."""
-    try:
-        _get_pid_path().unlink(missing_ok=True)
-    except Exception:
-        pass
-
-
-def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, Any]] = None) -> tuple[bool, Optional[dict[str, Any]]]:
-    """Acquire a machine-local lock keyed by scope + identity.
-
     Used to prevent multiple local gateways from using the same external identity
     at once (e.g. the same Telegram bot token across different HERMES_HOME dirs).
     """
@@ -263,9 +227,7 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, 
 
         stale = existing_pid is None
         if not stale:
-            try:
-                os.kill(existing_pid, 0)
-            except (ProcessLookupError, PermissionError):
+            if not _pid_exists(existing_pid):
                 stale = True
             else:
                 current_start = _get_process_start_time(existing_pid)
@@ -276,9 +238,9 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, 
                 ):
                     stale = True
                 # Check if process is stopped (Ctrl+Z / SIGTSTP) — stopped
-                # processes still respond to os.kill(pid, 0) but are not
+                # processes still respond to existence checks but are not
                 # actually running. Treat them as stale so --replace works.
-                if not stale:
+                if not stale and sys.platform != "win32":
                     try:
                         _proc_status = Path(f"/proc/{existing_pid}/status")
                         if _proc_status.exists():
@@ -366,9 +328,7 @@ def get_running_pid() -> Optional[int]:
         remove_pid_file()
         return None
 
-    try:
-        os.kill(pid, 0)  # signal 0 = existence check, no actual signal sent
-    except (ProcessLookupError, PermissionError):
+    if not _pid_exists(pid):
         remove_pid_file()
         return None
 

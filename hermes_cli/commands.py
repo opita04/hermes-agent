@@ -361,7 +361,7 @@ def telegram_bot_commands() -> list[tuple[str, str]]:
     for cmd in COMMAND_REGISTRY:
         if not _is_gateway_available(cmd, overrides):
             continue
-        tg_name = cmd.name.replace("-", "_")
+        tg_name = cmd.name.replace("-", "_")[:32]
         result.append((tg_name, cmd.description))
     return result
 
@@ -389,10 +389,10 @@ def telegram_menu_commands(max_commands: int = 100) -> tuple[list[tuple[str, str
         pm = get_plugin_manager()
         plugin_cmds = getattr(pm, "_plugin_commands", {})
         for cmd_name in sorted(plugin_cmds):
-            tg_name = cmd_name.replace("-", "_")
+            tg_name = cmd_name.replace("-", "_")[:32]
             desc = "Plugin command"
-            if len(desc) > 40:
-                desc = desc[:37] + "..."
+            if len(desc) > 32:
+                desc = desc[:29] + "..."
             all_commands.append((tg_name, desc))
     except Exception:
         pass
@@ -412,12 +412,12 @@ def telegram_menu_commands(max_commands: int = 100) -> tuple[list[tuple[str, str
                 continue
             if skill_path.startswith(_hub_dir):
                 continue
-            name = cmd_key.lstrip("/").replace("-", "_")
+            name = cmd_key.lstrip("/").replace("-", "_")[:32]
             desc = info.get("description", "")
             # Keep descriptions short — setMyCommands has an undocumented
-            # total payload limit.  40 chars fits 100 commands safely.
-            if len(desc) > 40:
-                desc = desc[:37] + "..."
+            # total payload limit.  32 chars fits 100 commands safely.
+            if len(desc) > 32:
+                desc = desc[:29] + "..."
             skill_entries.append((name, desc))
     except Exception:
         pass

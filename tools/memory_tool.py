@@ -23,16 +23,25 @@ Design:
 - Frozen snapshot pattern: system prompt is stable, tool responses show live state
 """
 
-import fcntl
 import json
 import logging
 import os
 import re
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from hermes_constants import get_hermes_home
 from typing import Dict, Any, List, Optional
+
+try:
+    import fcntl
+except Exception:
+    fcntl = None
+try:
+    import msvcrt
+except Exception:
+    msvcrt = None
 
 logger = logging.getLogger(__name__)
 
@@ -133,13 +142,41 @@ class MemoryStore:
         """
         lock_path = path.with_suffix(path.suffix + ".lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = open(lock_path, "w")
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            yield
-        finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-            fd.close()
+        if fcntl is None and msvcrt is None:
+            with open(lock_path, "a", encoding="utf-8"):
+                yield
+            return
+
+        # On Windows, msvcrt.locking needs the file to exist with at least 1 byte.
+        if msvcrt and (not lock_path.exists() or lock_path.stat().st_size == 0):
+            lock_path.write_text(" ", encoding="utf-8")
+
+        with lock_path.open("r+" if msvcrt else "a+") as fd:
+            deadline = time.time() + 15.0
+            while True:
+                try:
+                    if fcntl:
+                        fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    else:
+                        fd.seek(0)
+                        msvcrt.locking(fd.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except (BlockingIOError, OSError, PermissionError):
+                    if time.time() >= deadline:
+                        raise TimeoutError(f"Timed out waiting for memory lock: {lock_path}")
+                    time.sleep(0.05)
+
+            try:
+                yield
+            finally:
+                if fcntl:
+                    fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+                elif msvcrt:
+                    try:
+                        fd.seek(0)
+                        msvcrt.locking(fd.fileno(), msvcrt.LK_UNLCK, 1)
+                    except (OSError, IOError):
+                        pass
 
     @staticmethod
     def _path_for(target: str) -> Path:
