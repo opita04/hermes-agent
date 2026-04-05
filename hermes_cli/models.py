@@ -1,7 +1,7 @@
 """
 Canonical model catalogs and lightweight validation helpers.
 
-Add, remove, or reorder entries here — both `hermes setup` and
+Add, remove, or reorder entries here - both `hermes setup` and
 `hermes` provider-selection will pick up the change automatically.
 """
 
@@ -216,7 +216,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "google/gemini-3-pro-preview",
         "google/gemini-3-flash-preview",
     ],
-    # Alibaba DashScope Coding platform (coding-intl) — default endpoint.
+    # Alibaba DashScope Coding platform (coding-intl) - default endpoint.
     # Supports Qwen models + third-party providers (GLM, Kimi, MiniMax).
     # Users with classic DashScope keys should override DASHSCOPE_BASE_URL
     # to https://dashscope-intl.aliyuncs.com/compatible-mode/v1 (OpenAI-compat)
@@ -231,7 +231,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "kimi-k2.5",
         "MiniMax-M2.5",
     ],
-    # Curated HF model list — only agentic models that map to OpenRouter defaults.
+    # Curated HF model list - only agentic models that map to OpenRouter defaults.
     "huggingface": [
         "Qwen/Qwen3.5-397B-A17B",
         "Qwen/Qwen3.5-35B-A3B",
@@ -374,10 +374,10 @@ def parse_model_input(raw: str, current_provider: str) -> tuple[str, str]:
 
     Supports ``provider:model`` syntax to switch providers at runtime::
 
-        openrouter:anthropic/claude-sonnet-4.5  →  ("openrouter", "anthropic/claude-sonnet-4.5")
-        nous:hermes-3                           →  ("nous", "hermes-3")
-        anthropic/claude-sonnet-4.5             →  (current_provider, "anthropic/claude-sonnet-4.5")
-        gpt-5.4                                 →  (current_provider, "gpt-5.4")
+        openrouter:anthropic/claude-sonnet-4.5  ->  ("openrouter", "anthropic/claude-sonnet-4.5")
+        nous:hermes-3                           ->  ("nous", "hermes-3")
+        anthropic/claude-sonnet-4.5             ->  (current_provider, "anthropic/claude-sonnet-4.5")
+        gpt-5.4                                 ->  (current_provider, "gpt-5.4")
 
     The colon is only treated as a provider delimiter if the left side is a
     recognized provider name or alias.  This avoids misinterpreting model names
@@ -393,8 +393,8 @@ def parse_model_input(raw: str, current_provider: str) -> tuple[str, str]:
         model_part = stripped[colon + 1:].strip()
         if provider_part and model_part and provider_part in _KNOWN_PROVIDER_NAMES:
             # Support custom:name:model triple syntax for named custom
-            # providers.  ``custom:local:qwen`` → ("custom:local", "qwen").
-            # Single colon ``custom:qwen`` → ("custom", "qwen") as before.
+            # providers.  ``custom:local:qwen`` -> ("custom:local", "qwen").
+            # Single colon ``custom:qwen`` -> ("custom", "qwen") as before.
             if provider_part == "custom" and ":" in model_part:
                 second_colon = model_part.find(":")
                 custom_name = model_part[:second_colon].strip()
@@ -445,14 +445,14 @@ def detect_provider_for_model(
 ) -> Optional[tuple[str, str]]:
     """Auto-detect the best provider for a model name.
 
-    Returns ``(provider_id, model_name)`` — the model name may be remapped
-    (e.g. bare ``deepseek-chat`` → ``deepseek/deepseek-chat`` for OpenRouter).
+    Returns ``(provider_id, model_name)`` - the model name may be remapped
+    (e.g. bare ``deepseek-chat`` -> ``deepseek/deepseek-chat`` for OpenRouter).
     Returns ``None`` when no confident match is found.
 
     Priority:
-    0. Bare provider name → switch to that provider's default model
+    0. Bare provider name -> switch to that provider's default model
     1. Direct provider with credentials (highest)
-    2. Direct provider without credentials → remap to OpenRouter slug
+    2. Direct provider without credentials -> remap to OpenRouter slug
     3. OpenRouter catalog match
     """
     name = (model_name or "").strip()
@@ -464,7 +464,7 @@ def detect_provider_for_model(
     # --- Step 0: bare provider name typed as model ---
     # If someone types `/model nous` or `/model anthropic`, treat it as a
     # provider switch and pick the first model from that provider's catalog.
-    # Skip "custom" and "openrouter" — custom has no model catalog, and
+    # Skip "custom" and "openrouter" - custom has no model catalog, and
     # openrouter requires an explicit model name to be useful.
     resolved_provider = _PROVIDER_ALIASES.get(name_lower, name_lower)
     if resolved_provider not in {"custom", "openrouter"}:
@@ -476,7 +476,7 @@ def detect_provider_for_model(
         ):
             return (resolved_provider, default_models[0])
 
-    # Aggregators list other providers' models — never auto-switch TO them
+    # Aggregators list other providers' models - never auto-switch TO them
     _AGGREGATORS = {"nous", "openrouter"}
 
     # If the model belongs to the current provider's catalog, don't suggest switching
@@ -511,11 +511,11 @@ def detect_provider_for_model(
         if has_creds:
             return (direct_match, name)
 
-        # No direct creds — try to find this model on OpenRouter instead
+        # No direct creds - try to find this model on OpenRouter instead
         or_slug = _find_openrouter_slug(name)
         if or_slug:
             return ("openrouter", or_slug)
-        # Still return the direct provider — credential resolution will
+        # Still return the direct provider - credential resolution will
         # give a clear error rather than silently using the wrong provider
         return (direct_match, name)
 
@@ -537,9 +537,9 @@ def _find_openrouter_slug(model_name: str) -> Optional[str]:
     """Find the full OpenRouter model slug for a bare or partial model name.
 
     Handles:
-    - Exact match: ``anthropic/claude-opus-4.6`` → as-is
-    - Bare name: ``deepseek-chat`` → ``deepseek/deepseek-chat``
-    - Bare name: ``claude-opus-4.6`` → ``anthropic/claude-opus-4.6``
+    - Exact match: ``anthropic/claude-opus-4.6`` -> as-is
+    - Bare name: ``deepseek-chat`` -> ``deepseek/deepseek-chat``
+    - Bare name: ``claude-opus-4.6`` -> ``anthropic/claude-opus-4.6``
     """
     name_lower = model_name.strip().lower()
     if not name_lower:
@@ -563,7 +563,7 @@ def _find_openrouter_slug(model_name: str) -> Optional[str]:
 def normalize_provider(provider: Optional[str]) -> str:
     """Normalize provider aliases to Hermes' canonical provider ids.
 
-    Note: ``"auto"`` passes through unchanged — use
+    Note: ``"auto"`` passes through unchanged - use
     ``hermes_cli.auth.resolve_provider()`` to resolve it to a concrete
     provider based on credentials and environment.
     """
@@ -1208,7 +1208,7 @@ def validate_requested_model(
                 "message": None,
             }
         else:
-            # API responded but model is not listed.  Accept anyway —
+            # API responded but model is not listed.  Accept anyway -
             # the user may have access to models not shown in the public
             # listing (e.g. Z.AI Pro/Max plans can use glm-5 on coding
             # endpoints even though it's not in /models).  Warn but allow.
@@ -1228,7 +1228,7 @@ def validate_requested_model(
                 ),
             }
 
-    # api_models is None — couldn't reach API.  Accept and persist,
+    # api_models is None - couldn't reach API.  Accept and persist,
     # but warn so typos don't silently break things.
     provider_label = _PROVIDER_LABELS.get(normalized, normalized)
     return {

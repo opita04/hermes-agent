@@ -464,7 +464,7 @@ def _oauth_trace(event: str, *, sequence_id: Optional[str] = None, **fields: Any
 
 
 # =============================================================================
-# Auth Store — persistence layer for ~/.hermes/auth.json
+# Auth Store - persistence layer for ~/.hermes/auth.json
 # =============================================================================
 
 def _auth_file_path() -> Path:
@@ -704,7 +704,7 @@ def deactivate_provider() -> None:
 
 
 # =============================================================================
-# Provider Resolution — picks which provider to use
+# Provider Resolution - picks which provider to use
 # =============================================================================
 
 def resolve_provider(
@@ -739,7 +739,7 @@ def resolve_provider(
         "hf": "huggingface", "hugging-face": "huggingface", "huggingface-hub": "huggingface",
         "go": "opencode-go", "opencode-go-sub": "opencode-go",
         "kilo": "kilocode", "kilo-code": "kilocode", "kilo-gateway": "kilocode",
-        # Local server aliases — route through the generic custom provider
+        # Local server aliases - route through the generic custom provider
         "lmstudio": "custom", "lm-studio": "custom", "lm_studio": "custom",
         "ollama": "custom", "vllm": "custom", "llamacpp": "custom",
         "llama.cpp": "custom", "llama-cpp": "custom",
@@ -871,7 +871,7 @@ def _is_remote_session() -> bool:
 
 
 # =============================================================================
-# OpenAI Codex auth — tokens stored in ~/.hermes/auth.json (not ~/.codex/)
+# OpenAI Codex auth - tokens stored in ~/.hermes/auth.json (not ~/.codex/)
 #
 # Hermes maintains its own Codex OAuth session separate from the Codex CLI
 # and VS Code extension. This prevents refresh token rotation conflicts
@@ -1086,7 +1086,7 @@ def resolve_codex_runtime_credentials(
         cli_tokens = _import_codex_cli_tokens()
         if cli_tokens:
             logger.info("Migrating Codex credentials from ~/.codex/ to Hermes auth store")
-            print("⚠️  Migrating Codex credentials to Hermes's own auth store.")
+            print("    Migrating Codex credentials to Hermes's own auth store.")
             print("   This avoids conflicts with Codex CLI and VS Code.")
             print("   Run `hermes login` to create a fully independent session.\n")
             _save_codex_tokens(cli_tokens)
@@ -1162,7 +1162,7 @@ def _resolve_verify(
 
 
 # =============================================================================
-# OAuth Device Code Flow — generic, parameterized by provider
+# OAuth Device Code Flow - generic, parameterized by provider
 # =============================================================================
 
 def _request_device_code(
@@ -1242,7 +1242,7 @@ def _poll_for_token(
 
 
 # =============================================================================
-# Nous Portal — token refresh, agent key minting, model discovery
+# Nous Portal - token refresh, agent key minting, model discovery
 # =============================================================================
 
 def _refresh_access_token(
@@ -1349,7 +1349,7 @@ def fetch_nous_models(
         model_id = item.get("id")
         if isinstance(model_id, str) and model_id.strip():
             mid = model_id.strip()
-            # Skip Hermes models — they're not reliable for agentic tool-calling
+            # Skip Hermes models - they're not reliable for agentic tool-calling
             if "hermes" in mid.lower():
                 continue
             model_ids.append(mid)
@@ -2044,14 +2044,14 @@ def detect_external_credentials() -> List[Dict[str, Any]]:
         found.append({
             "provider": "openai-codex",
             "path": str(codex_path),
-            "label": f"Codex CLI credentials found ({codex_path}) — run `hermes login` to create a separate session",
+            "label": f"Codex CLI credentials found ({codex_path}) - run `hermes login` to create a separate session",
         })
 
     return found
 
 
 # =============================================================================
-# CLI Commands — login / logout
+# CLI Commands - login / logout
 # =============================================================================
 
 def _update_config_for_provider(
@@ -2152,7 +2152,7 @@ def _prompt_model_selection(model_ids: List[str], current_model: str = "") -> Op
     # Build display labels with marker on current
     def _label(mid):
         if mid == current_model:
-            return f"{mid}  ← currently in use"
+            return f"{mid}  <- currently in use"
         return mid
 
     # Default cursor on the current model (index 0 if it was reordered to top)
@@ -2219,7 +2219,7 @@ def _prompt_model_selection(model_ids: List[str], current_model: str = "") -> Op
 def _save_model_choice(model_id: str) -> None:
     """Save the selected model to config.yaml (single source of truth).
 
-    The model is stored in config.yaml only — NOT in .env.  This avoids
+    The model is stored in config.yaml only - NOT in .env.  This avoids
     conflicts in multi-agent setups where env vars would stomp each other.
     """
     from hermes_cli.config import save_config, load_config
@@ -2280,10 +2280,10 @@ def _login_openai_codex(args, pconfig: ProviderConfig) -> None:
             print(f"  Config updated: {config_path} (model.provider=openai-codex)")
             return
 
-    # Run a fresh device code flow — Hermes gets its own OAuth session
+    # Run a fresh device code flow - Hermes gets its own OAuth session
     print()
     print("Signing in to OpenAI Codex...")
-    print("(Hermes creates its own session — won't affect Codex CLI or VS Code)")
+    print("(Hermes creates its own session - won't affect Codex CLI or VS Code)")
     print()
 
     creds = _codex_device_code_login()
@@ -2506,7 +2506,7 @@ def _nous_device_code_login(
             if opened:
                 print("  (Opened browser for verification)")
             else:
-                print("  Could not open browser automatically — use the URL above.")
+                print("  Could not open browser automatically - use the URL above.")
 
         effective_interval = max(1, min(interval, DEVICE_AUTH_POLL_INTERVAL_CAP_SECONDS))
         print(f"Waiting for approval (polling every {effective_interval}s)...")
@@ -2613,7 +2613,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
 
             print()
             if model_ids:
-                print(f"Showing {len(model_ids)} curated models — use \"Enter custom model name\" for others.")
+                print(f"Showing {len(model_ids)} curated models - use \"Enter custom model name\" for others.")
                 selected_model = _prompt_model_selection(model_ids)
                 if selected_model:
                     _save_model_choice(selected_model)

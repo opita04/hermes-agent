@@ -139,7 +139,7 @@ def managed_error(action: str = "modify configuration"):
 # Config paths
 # =============================================================================
 
-# Re-export from hermes_constants — canonical definition lives there.
+# Re-export from hermes_constants - canonical definition lives there.
 from hermes_constants import get_hermes_home  # noqa: F811,E402
 
 def get_config_path() -> Path:
@@ -205,7 +205,7 @@ DEFAULT_CONFIG = {
         "max_turns": 90,
         # Tool-use enforcement: injects system prompt guidance that tells the
         # model to actually call tools instead of describing intended actions.
-        # Values: "auto" (default — applies to gpt/codex models), true/false
+        # Values: "auto" (default - applies to gpt/codex models), true/false
         # (force on/off for all models), or a list of model-name substrings
         # to match (e.g. ["gpt", "codex", "gemini", "qwen"]).
         "tool_use_enforcement": "auto",
@@ -225,19 +225,19 @@ DEFAULT_CONFIG = {
         "singularity_image": "docker://nikolaik/python-nodejs:python3.11-nodejs20",
         "modal_image": "nikolaik/python-nodejs:python3.11-nodejs20",
         "daytona_image": "nikolaik/python-nodejs:python3.11-nodejs20",
-        # Container resource limits (docker, singularity, modal, daytona — ignored for local/ssh)
+        # Container resource limits (docker, singularity, modal, daytona - ignored for local/ssh)
         "container_cpu": 1,
         "container_memory": 5120,       # MB (default 5GB)
         "container_disk": 51200,        # MB (default 50GB)
         "container_persistent": True,   # Persist filesystem across sessions
-        # Docker volume mounts — share host directories with the container.
+        # Docker volume mounts - share host directories with the container.
         # Each entry is "host_path:container_path" (standard Docker -v syntax).
         # Example: ["/home/user/projects:/workspace/projects", "/data:/data"]
         "docker_volumes": [],
         # Explicit opt-in: mount the host cwd into /workspace for Docker sessions.
         # Default off because passing host directories into a sandbox weakens isolation.
         "docker_mount_cwd_to_workspace": False,
-        # Persistent shell — keep a long-lived bash shell across execute() calls
+        # Persistent shell - keep a long-lived bash shell across execute() calls
         # so cwd/env vars/shell variables survive between commands.
         # Enabled by default for non-local backends (SSH); local is always opt-in
         # via TERMINAL_LOCAL_PERSISTENT env var.
@@ -258,7 +258,7 @@ DEFAULT_CONFIG = {
         },
     },
 
-    # Filesystem checkpoints — automatic snapshots before destructive file ops.
+    # Filesystem checkpoints - automatic snapshots before destructive file ops.
     # When enabled, the agent takes a snapshot of the working directory once per
     # conversation turn (on first write_file/patch call).  Use /rollback to restore.
     "checkpoints": {
@@ -268,7 +268,7 @@ DEFAULT_CONFIG = {
 
     # Maximum characters returned by a single read_file call.  Reads that
     # exceed this are rejected with guidance to use offset+limit.
-    # 100K chars ≈ 25–35K tokens across typical tokenisers.
+    # 100K chars   25-35K tokens across typical tokenisers.
     "file_read_max_chars": 100_000,
     
     "compression": {
@@ -287,7 +287,7 @@ DEFAULT_CONFIG = {
         "cheap_model": {},
     },
     
-    # Auxiliary model config — provider:model for each side task.
+    # Auxiliary model config - provider:model for each side task.
     # Format: provider is the provider name, model is the model slug.
     # "auto" for provider = auto-detect best available provider.
     # Empty model = use provider's default auxiliary model.
@@ -299,22 +299,22 @@ DEFAULT_CONFIG = {
             "model": "",           # e.g. "google/gemini-2.5-flash", "gpt-4o"
             "base_url": "",        # direct OpenAI-compatible endpoint (takes precedence over provider)
             "api_key": "",         # API key for base_url (falls back to OPENAI_API_KEY)
-            "timeout": 30,         # seconds — LLM API call timeout; increase for slow local vision models
-            "download_timeout": 30,  # seconds — image HTTP download timeout; increase for slow connections
+            "timeout": 30,         # seconds - LLM API call timeout; increase for slow local vision models
+            "download_timeout": 30,  # seconds - image HTTP download timeout; increase for slow connections
         },
         "web_extract": {
             "provider": "auto",
             "model": "",
             "base_url": "",
             "api_key": "",
-            "timeout": 30,         # seconds — increase for slow local models
+            "timeout": 30,         # seconds - increase for slow local models
         },
         "compression": {
             "provider": "auto",
             "model": "",
             "base_url": "",
             "api_key": "",
-            "timeout": 120,        # seconds — compression summarises large contexts; increase for local models
+            "timeout": 120,        # seconds - compression summarises large contexts; increase for local models
         },
         "session_search": {
             "provider": "auto",
@@ -430,7 +430,7 @@ DEFAULT_CONFIG = {
         "user_char_limit": 1375,     # ~500 tokens at 2.75 chars/token
     },
 
-    # Subagent delegation — override the provider:model used by delegate_task
+    # Subagent delegation - override the provider:model used by delegate_task
     # so child agents can run on a different (cheaper/faster) provider and model.
     # Uses the same runtime provider resolution as CLI/gateway startup, so all
     # configured providers (OpenRouter, Nous, Z.ai, Kimi, etc.) are supported.
@@ -443,13 +443,13 @@ DEFAULT_CONFIG = {
                                # independent of the parent's max_iterations)
     },
 
-    # Ephemeral prefill messages file — JSON list of {role, content} dicts
+    # Ephemeral prefill messages file - JSON list of {role, content} dicts
     # injected at the start of every API call for few-shot priming.
     # Never saved to sessions, logs, or trajectories.
     "prefill_messages_file": "",
     
-    # Skills — external skill directories for sharing skills across tools/agents.
-    # Each path is expanded (~, ${VAR}) and resolved.  Read-only — skill creation
+    # Skills - external skill directories for sharing skills across tools/agents.
+    # Each path is expanded (~, ${VAR}) and resolved.  Read-only - skill creation
     # always goes to ~/.hermes/skills/.
     "skills": {
         "external_dirs": [],   # e.g. ["~/.agents/skills", "/shared/team-skills"]
@@ -469,21 +469,21 @@ DEFAULT_CONFIG = {
         "require_mention": True,       # Require @mention to respond in server channels
         "free_response_channels": "",  # Comma-separated channel IDs where bot responds without mention
         "auto_thread": True,           # Auto-create threads on @mention in channels (like Slack)
-        "reactions": True,             # Add 👀/✅/❌ reactions to messages during processing
+        "reactions": True,             # Add  / /  reactions to messages during processing
     },
 
     # WhatsApp platform settings (gateway mode)
     "whatsapp": {
         # Reply prefix prepended to every outgoing WhatsApp message.
-        # Default (None) uses the built-in "⚕ *Hermes Agent*" header.
+        # Default (None) uses the built-in "* *Hermes Agent*" header.
         # Set to "" (empty string) to disable the header entirely.
-        # Supports \n for newlines, e.g. "🤖 *My Bot*\n──────\n"
+        # Supports \n for newlines, e.g. "  *My Bot*\n------\n"
     },
 
     # Approval mode for dangerous commands:
-    #   manual — always prompt the user (default)
-    #   smart  — use auxiliary LLM to auto-approve low-risk commands, prompt for high-risk
-    #   off    — skip all approval prompts (equivalent to --yolo)
+    #   manual - always prompt the user (default)
+    #   smart  - use auxiliary LLM to auto-approve low-risk commands, prompt for high-risk
+    #   off    - skip all approval prompts (equivalent to --yolo)
     "approvals": {
         "mode": "manual",
         "timeout": 60,
@@ -493,7 +493,7 @@ DEFAULT_CONFIG = {
     "command_allowlist": [],
     # User-defined quick commands that bypass the agent loop (type: exec only)
     "quick_commands": {},
-    # Custom personalities — add your own entries here
+    # Custom personalities - add your own entries here
     # Supports string format: {"name": "system prompt"}
     # Or dict format: {"name": {"description": "...", "system_prompt": "...", "tone": "...", "style": "..."}}
     "personalities": {},
@@ -540,12 +540,12 @@ ENV_VARS_BY_VERSION: Dict[int, List[str]] = {
 # Required environment variables with metadata for migration prompts.
 # LLM provider is required but handled in the setup wizard's provider
 # selection step (Nous Portal / OpenRouter / Custom endpoint), so this
-# dict is intentionally empty — no single env var is universally required.
+# dict is intentionally empty - no single env var is universally required.
 REQUIRED_ENV_VARS = {}
 
 # Optional environment variables that enhance functionality
 OPTIONAL_ENV_VARS = {
-    # ── Provider (handled in provider selection, not shown in checklists) ──
+    # -- Provider (handled in provider selection, not shown in checklists) --
     "NOUS_BASE_URL": {
         "description": "Nous Portal base URL override",
         "prompt": "Nous Portal base URL (leave empty for default)",
@@ -720,7 +720,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
 
-    # ── Tool API keys ──
+    # -- Tool API keys --
     "EXA_API_KEY": {
         "description": "Exa API key for AI-native web search and contents",
         "prompt": "Exa API key",
@@ -794,7 +794,7 @@ OPTIONAL_ENV_VARS = {
         "category": "tool",
     },
     "BROWSERBASE_API_KEY": {
-        "description": "Browserbase API key for cloud browser (optional — local browser works without this)",
+        "description": "Browserbase API key for cloud browser (optional - local browser works without this)",
         "prompt": "Browserbase API key",
         "url": "https://browserbase.com/",
         "tools": ["browser_navigate", "browser_click"],
@@ -802,7 +802,7 @@ OPTIONAL_ENV_VARS = {
         "category": "tool",
     },
     "BROWSERBASE_PROJECT_ID": {
-        "description": "Browserbase project ID (optional — only needed for cloud browser)",
+        "description": "Browserbase project ID (optional - only needed for cloud browser)",
         "prompt": "Browserbase project ID",
         "url": "https://browserbase.com/",
         "tools": ["browser_navigate", "browser_click"],
@@ -810,7 +810,7 @@ OPTIONAL_ENV_VARS = {
         "category": "tool",
     },
     "BROWSER_USE_API_KEY": {
-        "description": "Browser Use API key for cloud browser (optional — local browser works without this)",
+        "description": "Browser Use API key for cloud browser (optional - local browser works without this)",
         "prompt": "Browser Use API key",
         "url": "https://browser-use.com/",
         "tools": ["browser_navigate", "browser_click"],
@@ -872,7 +872,7 @@ OPTIONAL_ENV_VARS = {
         "category": "tool",
     },
 
-    # ── Honcho ──
+    # -- Honcho --
     "HONCHO_API_KEY": {
         "description": "Honcho API key for AI-native persistent memory",
         "prompt": "Honcho API key",
@@ -887,7 +887,7 @@ OPTIONAL_ENV_VARS = {
         "category": "tool",
     },
 
-    # ── Messaging platforms ──
+    # -- Messaging platforms --
     "TELEGRAM_BOT_TOKEN": {
         "description": "Telegram bot token from @BotFather",
         "prompt": "Telegram bot token",
@@ -926,7 +926,7 @@ OPTIONAL_ENV_VARS = {
         "category": "messaging",
     },
     "SLACK_APP_TOKEN": {
-        "description": "Slack app-level token (xapp-) for Socket Mode. Get from Basic Information → "
+        "description": "Slack app-level token (xapp-) for Socket Mode. Get from Basic Information -> "
                        "App-Level Tokens. Also ensure Event Subscriptions include: message.im, "
                        "message.channels, message.groups, app_mention",
         "prompt": "Slack App Token (xapp-...)",
@@ -1030,7 +1030,7 @@ OPTIONAL_ENV_VARS = {
         "advanced": True,
     },
     "API_SERVER_HOST": {
-        "description": "Host/bind address for the API server (default: 127.0.0.1). Use 0.0.0.0 for network access — requires API_SERVER_KEY for security.",
+        "description": "Host/bind address for the API server (default: 127.0.0.1). Use 0.0.0.0 for network access - requires API_SERVER_KEY for security.",
         "prompt": "API server host",
         "url": None,
         "password": False,
@@ -1059,7 +1059,7 @@ OPTIONAL_ENV_VARS = {
         "category": "messaging",
     },
 
-    # ── Agent settings ──
+    # -- Agent settings --
     "MESSAGING_CWD": {
         "description": "Working directory for terminal commands via messaging",
         "prompt": "Messaging working directory (default: home)",
@@ -1081,19 +1081,19 @@ OPTIONAL_ENV_VARS = {
         "password": False,
         "category": "setting",
     },
-    # HERMES_TOOL_PROGRESS and HERMES_TOOL_PROGRESS_MODE are deprecated —
+    # HERMES_TOOL_PROGRESS and HERMES_TOOL_PROGRESS_MODE are deprecated -
     # now configured via display.tool_progress in config.yaml (off|new|all|verbose).
     # Gateway falls back to these env vars for backward compatibility.
     "HERMES_TOOL_PROGRESS": {
         "description": "(deprecated) Use display.tool_progress in config.yaml instead",
-        "prompt": "Tool progress (deprecated — use config.yaml)",
+        "prompt": "Tool progress (deprecated - use config.yaml)",
         "url": None,
         "password": False,
         "category": "setting",
     },
     "HERMES_TOOL_PROGRESS_MODE": {
         "description": "(deprecated) Use display.tool_progress in config.yaml instead",
-        "prompt": "Progress mode (deprecated — use config.yaml)",
+        "prompt": "Progress mode (deprecated - use config.yaml)",
         "url": None,
         "password": False,
         "category": "setting",
@@ -1214,18 +1214,18 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     """
     results = {"env_added": [], "config_added": [], "warnings": []}
 
-    # ── Always: sanitize .env (split concatenated keys) ──
+    # -- Always: sanitize .env (split concatenated keys) --
     try:
         fixes = sanitize_env_file()
         if fixes and not quiet:
-            print(f"  ✓ Repaired .env file ({fixes} corrupted entries fixed)")
+            print(f"  [v] Repaired .env file ({fixes} corrupted entries fixed)")
     except Exception:
         pass  # best-effort; don't block migration on sanitize failure
 
     # Check config version
     current_ver, latest_ver = check_config_version()
     
-    # ── Version 3 → 4: migrate tool progress from .env to config.yaml ──
+    # -- Version 3 -> 4: migrate tool progress from .env to config.yaml --
     if current_ver < 4:
         config = load_config()
         display = config.get("display", {})
@@ -1246,9 +1246,9 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             config["display"] = display
             save_config(config)
             if not quiet:
-                print(f"  ✓ Migrated tool progress to config.yaml: {display['tool_progress']}")
+                print(f"  [v] Migrated tool progress to config.yaml: {display['tool_progress']}")
     
-    # ── Version 4 → 5: add timezone field ──
+    # -- Version 4 -> 5: add timezone field --
     if current_ver < 5:
         config = load_config()
         if "timezone" not in config:
@@ -1262,9 +1262,9 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             save_config(config)
             if not quiet:
                 tz_display = config["timezone"] or "(server-local)"
-                print(f"  ✓ Added timezone to config.yaml: {tz_display}")
+                print(f"  [v] Added timezone to config.yaml: {tz_display}")
 
-    # ── Version 8 → 9: clear ANTHROPIC_TOKEN from .env ──
+    # -- Version 8 -> 9: clear ANTHROPIC_TOKEN from .env --
     # The new Anthropic auth flow no longer uses this env var.
     if current_ver < 9:
         try:
@@ -1272,20 +1272,20 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             if old_token:
                 save_env_value("ANTHROPIC_TOKEN", "")
                 if not quiet:
-                    print("  ✓ Cleared ANTHROPIC_TOKEN from .env (no longer used)")
+                    print("  [v] Cleared ANTHROPIC_TOKEN from .env (no longer used)")
         except Exception:
             pass
 
     if current_ver < latest_ver and not quiet:
-        print(f"Config version: {current_ver} → {latest_ver}")
+        print(f"Config version: {current_ver} -> {latest_ver}")
     
     # Check for missing required env vars
     missing_env = get_missing_env_vars(required_only=True)
     
     if missing_env and not quiet:
-        print("\n⚠️  Missing required environment variables:")
+        print("\n    Missing required environment variables:")
         for var in missing_env:
-            print(f"   • {var['name']}: {var['description']}")
+            print(f"     {var['name']}: {var['description']}")
     
     if interactive and missing_env:
         print("\nLet's configure them now:\n")
@@ -1302,7 +1302,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             if value:
                 save_env_value(var["name"], value)
                 results["env_added"].append(var["name"])
-                print(f"  ✓ Saved {var['name']}")
+                print(f"  [v] Saved {var['name']}")
             else:
                 results["warnings"].append(f"Skipped {var['name']} - some features may not work")
             print()
@@ -1330,7 +1330,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
         if new_and_unset:
             print(f"\n  {len(new_and_unset)} new optional key(s) in this update:")
             for name, info in new_and_unset:
-                print(f"    • {name} — {info.get('description', '')}")
+                print(f"      {name} - {info.get('description', '')}")
             print()
             try:
                 answer = input("  Configure new keys? [y/N]: ").strip().lower()
@@ -1353,7 +1353,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                     if value:
                         save_env_value(name, value)
                         results["env_added"].append(name)
-                        print(f"  ✓ Saved {name}")
+                        print(f"  [v] Saved {name}")
                     print()
             else:
                 print("  Set later with: hermes config set <key> <value>")
@@ -1371,7 +1371,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             _set_nested(config, key, default)
             results["config_added"].append(key)
             if not quiet:
-                print(f"  ✓ Added {key} = {default}")
+                print(f"  [v] Added {key} = {default}")
         
         # Update version and save
         config["_config_version"] = latest_ver
@@ -1430,7 +1430,7 @@ def _normalize_root_model_keys(config: Dict[str, Any]) -> Dict[str, Any]:
 
     Some users (or older code) placed ``provider:`` and ``base_url:`` at the
     config root instead of inside ``model:``.  These root-level keys are only
-    used as a fallback when the corresponding ``model.*`` key is empty — they
+    used as a fallback when the corresponding ``model.*`` key is empty - they
     never override an existing ``model.provider`` or ``model.base_url``.
     After migration the root-level keys are removed so they can't cause
     confusion on subsequent loads.
@@ -1500,7 +1500,7 @@ def load_config() -> Dict[str, Any]:
 
 
 _SECURITY_COMMENT = """
-# ── Security ──────────────────────────────────────────────────────────
+# -- Security ----------------------------------------------------------
 # API keys, tokens, and passwords are redacted from tool output by default.
 # Set to false to see full values (useful for debugging auth issues).
 # tirith pre-exec scanning is enabled by default when the tirith binary
@@ -1516,19 +1516,19 @@ _SECURITY_COMMENT = """
 """
 
 _FALLBACK_COMMENT = """
-# ── Fallback Model ────────────────────────────────────────────────────
+# -- Fallback Model ----------------------------------------------------
 # Automatic provider failover when primary is unavailable.
 # Uncomment and configure to enable. Triggers on rate limits (429),
 # overload (529), service errors (503), or connection failures.
 #
 # Supported providers:
-#   openrouter   (OPENROUTER_API_KEY)  — routes to any model
-#   openai-codex (OAuth — hermes login) — OpenAI Codex
-#   nous         (OAuth — hermes login) — Nous Portal
-#   zai          (ZAI_API_KEY)         — Z.AI / GLM
-#   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
-#   minimax      (MINIMAX_API_KEY)     — MiniMax
-#   minimax-cn   (MINIMAX_CN_API_KEY)  — MiniMax (China)
+#   openrouter   (OPENROUTER_API_KEY)  - routes to any model
+#   openai-codex (OAuth - hermes login) - OpenAI Codex
+#   nous         (OAuth - hermes login) - Nous Portal
+#   zai          (ZAI_API_KEY)         - Z.AI / GLM
+#   kimi-coding  (KIMI_API_KEY)        - Kimi / Moonshot
+#   minimax      (MINIMAX_API_KEY)     - MiniMax
+#   minimax-cn   (MINIMAX_CN_API_KEY)  - MiniMax (China)
 #
 # For custom OpenAI-compatible endpoints, add base_url and api_key_env.
 #
@@ -1536,7 +1536,7 @@ _FALLBACK_COMMENT = """
 #   provider: openrouter
 #   model: anthropic/claude-sonnet-4
 #
-# ── Smart Model Routing ────────────────────────────────────────────────
+# -- Smart Model Routing ------------------------------------------------
 # Optional cheap-vs-strong routing for simple turns.
 # Keeps the primary model for complex work, but can route short/simple
 # messages to a cheaper model across providers.
@@ -1552,26 +1552,26 @@ _FALLBACK_COMMENT = """
 
 
 _COMMENTED_SECTIONS = """
-# ── Security ──────────────────────────────────────────────────────────
+# -- Security ----------------------------------------------------------
 # API keys, tokens, and passwords are redacted from tool output by default.
 # Set to false to see full values (useful for debugging auth issues).
 #
 # security:
 #   redact_secrets: false
 
-# ── Fallback Model ────────────────────────────────────────────────────
+# -- Fallback Model ----------------------------------------------------
 # Automatic provider failover when primary is unavailable.
 # Uncomment and configure to enable. Triggers on rate limits (429),
 # overload (529), service errors (503), or connection failures.
 #
 # Supported providers:
-#   openrouter   (OPENROUTER_API_KEY)  — routes to any model
-#   openai-codex (OAuth — hermes login) — OpenAI Codex
-#   nous         (OAuth — hermes login) — Nous Portal
-#   zai          (ZAI_API_KEY)         — Z.AI / GLM
-#   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
-#   minimax      (MINIMAX_API_KEY)     — MiniMax
-#   minimax-cn   (MINIMAX_CN_API_KEY)  — MiniMax (China)
+#   openrouter   (OPENROUTER_API_KEY)  - routes to any model
+#   openai-codex (OAuth - hermes login) - OpenAI Codex
+#   nous         (OAuth - hermes login) - Nous Portal
+#   zai          (ZAI_API_KEY)         - Z.AI / GLM
+#   kimi-coding  (KIMI_API_KEY)        - Kimi / Moonshot
+#   minimax      (MINIMAX_API_KEY)     - MiniMax
+#   minimax-cn   (MINIMAX_CN_API_KEY)  - MiniMax (China)
 #
 # For custom OpenAI-compatible endpoints, add base_url and api_key_env.
 #
@@ -1579,7 +1579,7 @@ _COMMENTED_SECTIONS = """
 #   provider: openrouter
 #   model: anthropic/claude-sonnet-4
 #
-# ── Smart Model Routing ────────────────────────────────────────────────
+# -- Smart Model Routing ------------------------------------------------
 # Optional cheap-vs-strong routing for simple turns.
 # Keeps the primary model for complex work, but can route short/simple
 # messages to a cheaper model across providers.
@@ -1860,20 +1860,20 @@ def show_config():
     config = load_config()
     
     print()
-    print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│              ⚕ Hermes Configuration                    │", Colors.CYAN))
-    print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
+    print(color("+---------------------------------------------------------+", Colors.CYAN))
+    print(color("|              * Hermes Configuration                    |", Colors.CYAN))
+    print(color("+---------------------------------------------------------+", Colors.CYAN))
     
     # Paths
     print()
-    print(color("◆ Paths", Colors.CYAN, Colors.BOLD))
+    print(color(">> Paths", Colors.CYAN, Colors.BOLD))
     print(f"  Config:       {get_config_path()}")
     print(f"  Secrets:      {get_env_path()}")
     print(f"  Install:      {get_project_root()}")
     
     # API Keys
     print()
-    print(color("◆ API Keys", Colors.CYAN, Colors.BOLD))
+    print(color(">> API Keys", Colors.CYAN, Colors.BOLD))
     
     keys = [
         ("OPENROUTER_API_KEY", "OpenRouter"),
@@ -1895,13 +1895,13 @@ def show_config():
     
     # Model settings
     print()
-    print(color("◆ Model", Colors.CYAN, Colors.BOLD))
+    print(color(">> Model", Colors.CYAN, Colors.BOLD))
     print(f"  Model:        {config.get('model', 'not set')}")
     print(f"  Max turns:    {config.get('agent', {}).get('max_turns', DEFAULT_CONFIG['agent']['max_turns'])}")
     
     # Display
     print()
-    print(color("◆ Display", Colors.CYAN, Colors.BOLD))
+    print(color(">> Display", Colors.CYAN, Colors.BOLD))
     display = config.get('display', {})
     print(f"  Personality:  {display.get('personality', 'kawaii')}")
     print(f"  Reasoning:    {'on' if display.get('show_reasoning', False) else 'off'}")
@@ -1909,7 +1909,7 @@ def show_config():
 
     # Terminal
     print()
-    print(color("◆ Terminal", Colors.CYAN, Colors.BOLD))
+    print(color(">> Terminal", Colors.CYAN, Colors.BOLD))
     terminal = config.get('terminal', {})
     print(f"  Backend:      {terminal.get('backend', 'local')}")
     print(f"  Working dir:  {terminal.get('cwd', '.')}")
@@ -1935,7 +1935,7 @@ def show_config():
     
     # Timezone
     print()
-    print(color("◆ Timezone", Colors.CYAN, Colors.BOLD))
+    print(color(">> Timezone", Colors.CYAN, Colors.BOLD))
     tz = config.get('timezone', '')
     if tz:
         print(f"  Timezone:     {tz}")
@@ -1944,7 +1944,7 @@ def show_config():
 
     # Compression
     print()
-    print(color("◆ Context Compression", Colors.CYAN, Colors.BOLD))
+    print(color(">> Context Compression", Colors.CYAN, Colors.BOLD))
     compression = config.get('compression', {})
     enabled = compression.get('enabled', True)
     print(f"  Enabled:      {'yes' if enabled else 'no'}")
@@ -1970,7 +1970,7 @@ def show_config():
     )
     if has_overrides:
         print()
-        print(color("◆ Auxiliary Models (overrides)", Colors.CYAN, Colors.BOLD))
+        print(color(">> Auxiliary Models (overrides)", Colors.CYAN, Colors.BOLD))
         for label, task_cfg in aux_tasks.items():
             prov = task_cfg.get('provider', 'auto')
             mdl = task_cfg.get('model', '')
@@ -1982,7 +1982,7 @@ def show_config():
     
     # Messaging
     print()
-    print(color("◆ Messaging Platforms", Colors.CYAN, Colors.BOLD))
+    print(color(">> Messaging Platforms", Colors.CYAN, Colors.BOLD))
     
     telegram_token = get_env_value('TELEGRAM_BOT_TOKEN')
     discord_token = get_env_value('DISCORD_BOT_TOKEN')
@@ -1991,7 +1991,7 @@ def show_config():
     print(f"  Discord:      {'configured' if discord_token else color('not configured', Colors.DIM)}")
     
     print()
-    print(color("─" * 60, Colors.DIM))
+    print(color("-" * 60, Colors.DIM))
     print(color("  hermes config edit     # Edit config file", Colors.DIM))
     print(color("  hermes config set <key> <value>", Colors.DIM))
     print(color("  hermes setup           # Run setup wizard", Colors.DIM))
@@ -2051,7 +2051,7 @@ def set_config_value(key: str, value: str):
     
     if key.upper() in api_keys or key.upper().endswith('_API_KEY') or key.upper().endswith('_TOKEN') or key.upper().startswith('TERMINAL_SSH'):
         save_env_value(key.upper(), value)
-        print(f"✓ Set {key} in {get_env_path()}")
+        print(f"[v] Set {key} in {get_env_path()}")
         return
     
     # Otherwise it goes to config.yaml
@@ -2110,7 +2110,7 @@ def set_config_value(key: str, value: str):
     if key in _config_to_env_sync:
         save_env_value(_config_to_env_sync[key], str(value))
 
-    print(f"✓ Set {key} = {value} in {config_path}")
+    print(f"[v] Set {key} = {value} in {config_path}")
 
 
 # =============================================================================
@@ -2148,7 +2148,7 @@ def config_command(args):
     
     elif subcmd == "migrate":
         print()
-        print(color("🔄 Checking configuration for updates...", Colors.CYAN, Colors.BOLD))
+        print(color("  Checking configuration for updates...", Colors.CYAN, Colors.BOLD))
         print()
         
         # Check what's missing
@@ -2157,13 +2157,13 @@ def config_command(args):
         current_ver, latest_ver = check_config_version()
         
         if not missing_env and not missing_config and current_ver >= latest_ver:
-            print(color("✓ Configuration is up to date!", Colors.GREEN))
+            print(color("[v] Configuration is up to date!", Colors.GREEN))
             print()
             return
         
         # Show what needs to be updated
         if current_ver < latest_ver:
-            print(f"  Config version: {current_ver} → {latest_ver}")
+            print(f"  Config version: {current_ver} -> {latest_ver}")
         
         if missing_config:
             print(f"\n  {len(missing_config)} new config option(s) will be added with defaults")
@@ -2175,16 +2175,16 @@ def config_command(args):
         ]
         
         if required_missing:
-            print(f"\n  ⚠️  {len(required_missing)} required API key(s) missing:")
+            print(f"\n      {len(required_missing)} required API key(s) missing:")
             for var in required_missing:
-                print(f"     • {var['name']}")
+                print(f"       {var['name']}")
         
         if optional_missing:
-            print(f"\n  ℹ️  {len(optional_missing)} optional API key(s) not configured:")
+            print(f"\n      {len(optional_missing)} optional API key(s) not configured:")
             for var in optional_missing:
                 tools = var.get("tools", [])
                 tools_str = f" (enables: {', '.join(tools[:2])})" if tools else ""
-                print(f"     • {var['name']}{tools_str}")
+                print(f"       {var['name']}{tools_str}")
         
         print()
         
@@ -2193,44 +2193,44 @@ def config_command(args):
         
         print()
         if results["env_added"] or results["config_added"]:
-            print(color("✓ Configuration updated!", Colors.GREEN))
+            print(color("[v] Configuration updated!", Colors.GREEN))
         
         if results["warnings"]:
             print()
             for warning in results["warnings"]:
-                print(color(f"  ⚠️  {warning}", Colors.YELLOW))
+                print(color(f"      {warning}", Colors.YELLOW))
         
         print()
     
     elif subcmd == "check":
         # Non-interactive check for what's missing
         print()
-        print(color("📋 Configuration Status", Colors.CYAN, Colors.BOLD))
+        print(color("  Configuration Status", Colors.CYAN, Colors.BOLD))
         print()
         
         current_ver, latest_ver = check_config_version()
         if current_ver >= latest_ver:
-            print(f"  Config version: {current_ver} ✓")
+            print(f"  Config version: {current_ver} [v]")
         else:
-            print(color(f"  Config version: {current_ver} → {latest_ver} (update available)", Colors.YELLOW))
+            print(color(f"  Config version: {current_ver} -> {latest_ver} (update available)", Colors.YELLOW))
         
         print()
         print(color("  Required:", Colors.BOLD))
         for var_name in REQUIRED_ENV_VARS:
             if get_env_value(var_name):
-                print(f"    ✓ {var_name}")
+                print(f"    [v] {var_name}")
             else:
-                print(color(f"    ✗ {var_name} (missing)", Colors.RED))
+                print(color(f"    [x] {var_name} (missing)", Colors.RED))
         
         print()
         print(color("  Optional:", Colors.BOLD))
         for var_name, info in OPTIONAL_ENV_VARS.items():
             if get_env_value(var_name):
-                print(f"    ✓ {var_name}")
+                print(f"    [v] {var_name}")
             else:
                 tools = info.get("tools", [])
-                tools_str = f" → {', '.join(tools[:2])}" if tools else ""
-                print(color(f"    ○ {var_name}{tools_str}", Colors.DIM))
+                tools_str = f" -> {', '.join(tools[:2])}" if tools else ""
+                print(color(f"      {var_name}{tools_str}", Colors.DIM))
         
         missing_config = get_missing_config_fields()
         if missing_config:

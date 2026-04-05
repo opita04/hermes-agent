@@ -78,6 +78,30 @@ def _resolve_memory_mode(
     return {"memory_mode": default, "peer_memory_modes": overrides}
 
 
+def _normalize_alias_peer_pairs(raw):
+    """Normalize aliasPeerPairs config into list of (observer, observed) tuples.
+
+    Accepts:
+      [["agent-dave", "owner"], ["agent-albert", "owner"]]     # list of lists
+      [{"observer": "agent-dave", "observed": "owner"}, ...]   # list of dicts
+    Filters out malformed entries silently.
+    """
+    if not isinstance(raw, list):
+        return []
+    result = []
+    for entry in raw:
+        if isinstance(entry, (list, tuple)) and len(entry) == 2:
+            obs_r, obs_d = entry
+            if isinstance(obs_r, str) and isinstance(obs_d, str) and obs_r and obs_d:
+                result.append((obs_r, obs_d))
+        elif isinstance(entry, dict):
+            obs_r = entry.get("observer")
+            obs_d = entry.get("observed")
+            if isinstance(obs_r, str) and isinstance(obs_d, str) and obs_r and obs_d:
+                result.append((obs_r, obs_d))
+    return result
+
+
 @dataclass
 class HonchoClientConfig:
     """Configuration for Honcho client, resolved for a specific host."""
@@ -127,6 +151,14 @@ class HonchoClientConfig:
     session_strategy: str = "per-directory"
     session_peer_prefix: bool = False
     sessions: dict[str, str] = field(default_factory=dict)
+    # Cross-peer alias pairs - additional (observer, observed) pairs to query
+    # when fetching the user's peer card. Used to merge observations from
+    # sibling agents that share the same workspace but use different peer
+    # identities (e.g. OpenClaw writes (agent-dave, owner), Hermes writes
+    # (hermes, Jaime) - configure aliases so Hermes can see both).
+    # Format: list of [observer, observed] pairs. Example in honcho.json:
+    #   "aliasPeerPairs": [["agent-dave", "owner"], ["agent-albert", "owner"]]
+    alias_peer_pairs: list[tuple[str, str]] = field(default_factory=list)
     # Raw global config for anything else consumers need
     raw: dict[str, Any] = field(default_factory=dict)
     # True when Honcho was explicitly configured for this host (hosts.hermes
@@ -276,6 +308,9 @@ class HonchoClientConfig:
             session_strategy=session_strategy,
             session_peer_prefix=session_peer_prefix,
             sessions=raw.get("sessions", {}),
+            alias_peer_pairs=_normalize_alias_peer_pairs(
+                host_block.get("aliasPeerPairs") or raw.get("aliasPeerPairs") or []
+            ),
             raw=raw,
             explicitly_configured=_explicitly_configured,
         )

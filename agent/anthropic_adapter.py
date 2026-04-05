@@ -2,12 +2,12 @@
 
 Translates between Hermes's internal OpenAI-style message format and
 Anthropic's Messages API. Follows the same pattern as the codex_responses
-adapter — all provider-specific logic is isolated here.
+adapter - all provider-specific logic is isolated here.
 
 Auth supports:
-  - Regular API keys (sk-ant-api*) → x-api-key header
-  - OAuth setup-tokens (sk-ant-oat*) → Bearer auth + beta header
-  - Claude Code credentials (~/.claude.json or ~/.claude/.credentials.json) → Bearer auth
+  - Regular API keys (sk-ant-api*) -> x-api-key header
+  - OAuth setup-tokens (sk-ant-oat*) -> Bearer auth + beta header
+  - Claude Code credentials (~/.claude.json or ~/.claude/.credentials.json) -> Bearer auth
 """
 
 import json
@@ -35,7 +35,7 @@ ADAPTIVE_EFFORT_MAP = {
     "minimal": "low",
 }
 
-# ── Max output token limits per Anthropic model ───────────────────────
+# -- Max output token limits per Anthropic model -----------------------
 # Source: Anthropic docs + Cline model catalog.  Anthropic's API requires
 # max_tokens as a mandatory field.  Previously we hardcoded 16384, which
 # starves thinking-enabled models (thinking tokens count toward the limit).
@@ -102,9 +102,9 @@ _OAUTH_ONLY_BETAS = [
     "oauth-2025-04-20",
 ]
 
-# Claude Code identity — required for OAuth requests to be routed correctly.
+# Claude Code identity - required for OAuth requests to be routed correctly.
 # Without these, Anthropic's infrastructure intermittently 500s OAuth traffic.
-# The version must stay reasonably current — Anthropic rejects OAuth requests
+# The version must stay reasonably current - Anthropic rejects OAuth requests
 # when the spoofed user-agent version is too far behind the actual release.
 _CLAUDE_CODE_VERSION_FALLBACK = "2.1.74"
 _claude_code_version_cache: Optional[str] = None
@@ -173,7 +173,7 @@ def _is_third_party_anthropic_endpoint(base_url: str | None) -> bool:
         return False  # No base_url = direct Anthropic API
     normalized = base_url.rstrip("/").lower()
     if "anthropic.com" in normalized:
-        return False  # Direct Anthropic API — OAuth applies
+        return False  # Direct Anthropic API - OAuth applies
     return True  # Any other endpoint is a third-party proxy
 
 
@@ -222,14 +222,14 @@ def build_anthropic_client(api_key: str, base_url: str = None):
             kwargs["default_headers"] = {"anthropic-beta": ",".join(_COMMON_BETAS)}
     elif _is_third_party_anthropic_endpoint(base_url):
         # Third-party proxies (Azure AI Foundry, AWS Bedrock, etc.) use their
-        # own API keys with x-api-key auth. Skip OAuth detection — their keys
+        # own API keys with x-api-key auth. Skip OAuth detection - their keys
         # don't follow Anthropic's sk-ant-* prefix convention and would be
         # misclassified as OAuth tokens.
         kwargs["api_key"] = api_key
         if _COMMON_BETAS:
             kwargs["default_headers"] = {"anthropic-beta": ",".join(_COMMON_BETAS)}
     elif _is_oauth_token(api_key):
-        # OAuth access token / setup-token → Bearer auth + Claude Code identity.
+        # OAuth access token / setup-token -> Bearer auth + Claude Code identity.
         # Anthropic routes OAuth requests based on user-agent and headers;
         # without Claude Code's fingerprint, requests get intermittent 500s.
         all_betas = _COMMON_BETAS + _OAUTH_ONLY_BETAS
@@ -240,7 +240,7 @@ def build_anthropic_client(api_key: str, base_url: str = None):
             "x-app": "cli",
         }
     else:
-        # Regular API key → x-api-key header + common betas
+        # Regular API key -> x-api-key header + common betas
         kwargs["api_key"] = api_key
         if _COMMON_BETAS:
             kwargs["default_headers"] = {"anthropic-beta": ",".join(_COMMON_BETAS)}
@@ -298,7 +298,7 @@ def is_claude_code_token_valid(creds: Dict[str, Any]) -> bool:
 
     expires_at = creds.get("expiresAt", 0)
     if not expires_at:
-        # No expiry set (managed keys) — valid if token is present
+        # No expiry set (managed keys) - valid if token is present
         return bool(creds.get("accessToken"))
 
     # expiresAt is in milliseconds since epoch
@@ -375,7 +375,7 @@ def _refresh_oauth_token(creds: Dict[str, Any]) -> Optional[str]:
     """Attempt to refresh an expired Claude Code OAuth token."""
     refresh_token = creds.get("refreshToken", "")
     if not refresh_token:
-        logger.debug("No refresh token available — cannot refresh")
+        logger.debug("No refresh token available - cannot refresh")
         return None
 
     try:
@@ -442,11 +442,11 @@ def _resolve_claude_code_token_from_credentials(creds: Optional[Dict[str, Any]] 
         logger.debug("Using Claude Code credentials (auto-detected)")
         return creds["accessToken"]
     if creds:
-        logger.debug("Claude Code credentials expired — attempting refresh")
+        logger.debug("Claude Code credentials expired - attempting refresh")
         refreshed = _refresh_oauth_token(creds)
         if refreshed:
             return refreshed
-        logger.debug("Token refresh failed — re-run 'claude setup-token' to reauthenticate")
+        logger.debug("Token refresh failed - re-run 'claude setup-token' to reauthenticate")
     return None
 
 
@@ -508,7 +508,7 @@ def resolve_anthropic_token() -> Optional[str]:
       1. ANTHROPIC_TOKEN env var (OAuth/setup token saved by Hermes)
       2. CLAUDE_CODE_OAUTH_TOKEN env var
       3. Claude Code credentials (~/.claude.json or ~/.claude/.credentials.json)
-         — with automatic refresh if expired and a refresh token is available
+         - with automatic refresh if expired and a refresh token is available
       4. ANTHROPIC_API_KEY env var (regular API key, or legacy fallback)
 
     Returns the token string or None.
@@ -565,7 +565,7 @@ def run_oauth_setup_token() -> Optional[str]:
             "Install it with: npm install -g @anthropic-ai/claude-code"
         )
 
-    # Run interactively — stdin/stdout/stderr inherited so user can interact
+    # Run interactively - stdin/stdout/stderr inherited so user can interact
     try:
         subprocess.run([claude_path, "setup-token"])
     except (KeyboardInterrupt, EOFError):
@@ -585,7 +585,7 @@ def run_oauth_setup_token() -> Optional[str]:
     return None
 
 
-# ── Hermes-native PKCE OAuth flow ────────────────────────────────────────
+# -- Hermes-native PKCE OAuth flow ----------------------------------------
 # Mirrors the flow used by Claude Code, pi-ai, and OpenCode.
 # Stores credentials in ~/.hermes/.anthropic_oauth.json (our own file).
 
@@ -633,10 +633,10 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     print()
     print("Authorize Hermes with your Claude Pro/Max subscription.")
     print()
-    print("╭─ Claude Pro/Max Authorization ────────────────────╮")
-    print("│                                                   │")
-    print("│  Open this link in your browser:                  │")
-    print("╰───────────────────────────────────────────────────╯")
+    print(" - Claude Pro/Max Authorization -------------------- ")
+    print("|                                                   |")
+    print("|  Open this link in your browser:                  |")
+    print(" --------------------------------------------------- ")
     print()
     print(f"  {auth_url}")
     print()
@@ -799,7 +799,7 @@ def normalize_model_name(model: str, preserve_dots: bool = False) -> str:
 
     - Strips 'anthropic/' prefix (OpenRouter format, case-insensitive)
     - Converts dots to hyphens in version numbers (OpenRouter uses dots,
-      Anthropic uses hyphens: claude-opus-4.6 → claude-opus-4-6), unless
+      Anthropic uses hyphens: claude-opus-4.6 -> claude-opus-4-6), unless
       preserve_dots is True (e.g. for Alibaba/DashScope: qwen3.5-plus).
     """
     lower = model.lower()
@@ -1050,7 +1050,7 @@ def convert_messages_to_anthropic(
                 result.append({"role": "user", "content": [tool_result]})
             continue
 
-        # Regular user message — validate non-empty content (Anthropic rejects empty)
+        # Regular user message - validate non-empty content (Anthropic rejects empty)
         if isinstance(content, list):
             converted_blocks = _convert_content_to_anthropic(content)
             # Check if all text blocks are empty
@@ -1117,14 +1117,14 @@ def convert_messages_to_anthropic(
                 elif isinstance(prev_content, list) and isinstance(curr_content, list):
                     fixed[-1]["content"] = prev_content + curr_content
                 else:
-                    # Mixed types — wrap string in list
+                    # Mixed types - wrap string in list
                     if isinstance(prev_content, str):
                         prev_content = [{"type": "text", "text": prev_content}]
                     if isinstance(curr_content, str):
                         curr_content = [{"type": "text", "text": curr_content}]
                     fixed[-1]["content"] = prev_content + curr_content
             else:
-                # Consecutive assistant messages — merge text content
+                # Consecutive assistant messages - merge text content
                 prev_blocks = fixed[-1]["content"]
                 curr_blocks = m["content"]
                 if isinstance(prev_blocks, list) and isinstance(curr_blocks, list):
@@ -1132,7 +1132,7 @@ def convert_messages_to_anthropic(
                 elif isinstance(prev_blocks, str) and isinstance(curr_blocks, str):
                     fixed[-1]["content"] = prev_blocks + "\n" + curr_blocks
                 else:
-                    # Mixed types — normalize both to list and merge
+                    # Mixed types - normalize both to list and merge
                     if isinstance(prev_blocks, str):
                         prev_blocks = [{"type": "text", "text": prev_blocks}]
                     if isinstance(curr_blocks, str):
@@ -1180,7 +1180,7 @@ def build_anthropic_kwargs(
     if context_length and effective_max_tokens > context_length:
         effective_max_tokens = max(context_length - 1, 1)
 
-    # ── OAuth: Claude Code identity ──────────────────────────────────
+    # -- OAuth: Claude Code identity ----------------------------------
     if is_oauth:
         # 1. Prepend Claude Code system prompt identity
         cc_block = {"type": "text", "text": _CLAUDE_CODE_SYSTEM_PREFIX}
@@ -1191,7 +1191,7 @@ def build_anthropic_kwargs(
         else:
             system = [cc_block]
 
-        # 2. Sanitize system prompt — replace product name references
+        # 2. Sanitize system prompt - replace product name references
         #    to avoid Anthropic's server-side content filters.
         for block in system:
             if isinstance(block, dict) and block.get("type") == "text":
@@ -1237,7 +1237,7 @@ def build_anthropic_kwargs(
         elif tool_choice == "required":
             kwargs["tool_choice"] = {"type": "any"}
         elif tool_choice == "none":
-            # Anthropic has no tool_choice "none" — omit tools entirely to prevent use
+            # Anthropic has no tool_choice "none" - omit tools entirely to prevent use
             kwargs.pop("tools", None)
         elif isinstance(tool_choice, str):
             # Specific tool name
@@ -1246,7 +1246,7 @@ def build_anthropic_kwargs(
     # Map reasoning_config to Anthropic's thinking parameter.
     # Claude 4.6 models use adaptive thinking + output_config.effort.
     # Older models use manual thinking with budget_tokens.
-    # Haiku models do NOT support extended thinking at all — skip entirely.
+    # Haiku models do NOT support extended thinking at all - skip entirely.
     if reasoning_config and isinstance(reasoning_config, dict):
         if reasoning_config.get("enabled") is not False and "haiku" not in model.lower():
             effort = str(reasoning_config.get("effort", "medium")).lower()

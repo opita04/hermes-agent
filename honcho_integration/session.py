@@ -568,6 +568,46 @@ class HonchoSessionManager:
         with self._prefetch_cache_lock:
             return self._context_cache.pop(session_key, {})
 
+    def _fetch_alias_peer_cards(
+        self,
+        honcho_session,
+        exclude_pair=None,
+    ):
+        """Fetch peer_card entries from configured alias (observer, observed) pairs.
+
+        Phase 4 Option 1: Used when Hermes shares a Honcho workspace with
+        sibling agents that write to different peer identities. Returns a
+        deduplicated list of observation strings from all configured alias
+        pairs. Never raises - failures logged at debug level.
+        """
+        if not self._config or not getattr(self._config, "alias_peer_pairs", None):
+            return []
+
+        seen = set()
+        merged = []
+        for obs_r, obs_d in self._config.alias_peer_pairs:
+            if exclude_pair and (obs_r, obs_d) == exclude_pair:
+                continue
+            try:
+                alias_ctx = honcho_session.context(
+                    summary=False,
+                    tokens=self._context_tokens,
+                    peer_target=obs_d,
+                    peer_perspective=obs_r,
+                )
+                alias_card = alias_ctx.peer_card or []
+                entries = alias_card if isinstance(alias_card, list) else [str(alias_card)]
+                for e in entries:
+                    if e and e not in seen:
+                        seen.add(e)
+                        merged.append(e)
+            except Exception as e:
+                logger.debug(
+                    "Alias peer fetch failed for (%s -> %s): %s",
+                    obs_r, obs_d, e,
+                )
+        return merged
+
     def get_prefetch_context(self, session_key: str, user_message: str | None = None) -> dict[str, str]:
         """
         Pre-fetch user and AI peer context from Honcho.
@@ -594,6 +634,7 @@ class HonchoSessionManager:
             return {}
 
         result: dict[str, str] = {}
+        primary_card_list = []
         try:
             ctx = honcho_session.context(
                 summary=False,
@@ -603,9 +644,26 @@ class HonchoSessionManager:
             )
             card = ctx.peer_card or []
             result["representation"] = ctx.peer_representation or ""
-            result["card"] = "\n".join(card) if isinstance(card, list) else str(card)
+            primary_card_list = card if isinstance(card, list) else [str(card)]
+            result["card"] = "\n".join(primary_card_list)
         except Exception as e:
             logger.warning("Failed to fetch user context from Honcho: %s", e)
+
+        # Phase 4 Option 1: merge alias peer_card entries from sibling agents
+        try:
+            alias_cards = self._fetch_alias_peer_cards(
+                honcho_session,
+                exclude_pair=(session.assistant_peer_id, session.user_peer_id),
+            )
+        except Exception as e:
+            logger.debug("alias peer merge failed: %s", e)
+            alias_cards = []
+        if alias_cards:
+            seen_primary = set(primary_card_list)
+            extras = [e for e in alias_cards if e not in seen_primary]
+            if extras:
+                merged_card = primary_card_list + extras
+                result["card"] = "\n".join(merged_card)
 
         # Also fetch AI peer's own representation so Hermes knows itself.
         try:
@@ -813,15 +871,29 @@ class HonchoSessionManager:
         try:
             ctx = honcho_session.context(
                 summary=False,
-                tokens=200,
+                tokens=self._context_tokens,
                 peer_target=session.user_peer_id,
                 peer_perspective=session.assistant_peer_id,
             )
             card = ctx.peer_card or []
-            return card if isinstance(card, list) else [str(card)]
+            primary = card if isinstance(card, list) else [str(card)]
         except Exception as e:
             logger.debug("Failed to fetch peer card from Honcho: %s", e)
-            return []
+            primary = []
+
+        # Phase 4 Option 1: append alias peer_card entries
+        try:
+            alias_cards = self._fetch_alias_peer_cards(
+                honcho_session,
+                exclude_pair=(session.assistant_peer_id, session.user_peer_id),
+            )
+        except Exception as e:
+            logger.debug("alias peer merge failed in get_peer_card: %s", e)
+            alias_cards = []
+        if alias_cards:
+            seen = set(primary)
+            primary = primary + [e for e in alias_cards if e not in seen]
+        return primary
 
     def search_context(self, session_key: str, query: str, max_tokens: int = 800) -> str:
         """
@@ -847,6 +919,8 @@ class HonchoSessionManager:
         if not honcho_session:
             return ""
 
+        parts = []
+        primary_facts = []
         try:
             ctx = honcho_session.context(
                 summary=False,
@@ -855,17 +929,29 @@ class HonchoSessionManager:
                 peer_perspective=session.assistant_peer_id,
                 search_query=query,
             )
-            parts = []
             if ctx.peer_representation:
                 parts.append(ctx.peer_representation)
             card = ctx.peer_card or []
             if card:
-                facts = card if isinstance(card, list) else [str(card)]
-                parts.append("\n".join(f"- {f}" for f in facts))
-            return "\n\n".join(parts)
+                primary_facts = card if isinstance(card, list) else [str(card)]
         except Exception as e:
             logger.debug("Honcho search_context failed: %s", e)
-            return ""
+
+        # Phase 4 Option 1: merge alias peer_card entries into search results
+        try:
+            alias_cards = self._fetch_alias_peer_cards(
+                honcho_session,
+                exclude_pair=(session.assistant_peer_id, session.user_peer_id),
+            )
+        except Exception as e:
+            logger.debug("alias peer merge failed in search_context: %s", e)
+            alias_cards = []
+        seen = set(primary_facts)
+        extras = [e for e in alias_cards if e and e not in seen]
+        all_facts = primary_facts + extras
+        if all_facts:
+            parts.append("\n".join(f"- {f}" for f in all_facts))
+        return "\n\n".join(parts)
 
     def create_conclusion(self, session_key: str, content: str) -> bool:
         """Write a conclusion about the user back to Honcho.

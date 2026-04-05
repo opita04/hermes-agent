@@ -60,6 +60,9 @@ def _get_scope_lock_path(scope: str, identity: str) -> Path:
 
 def _get_process_start_time(pid: int) -> Optional[int]:
     """Return the kernel start time for a process when available."""
+    if sys.platform == "win32":
+        # Windows process start times are harder to get via stdlib /proc equivalents
+        return None
     stat_path = Path(f"/proc/{pid}/stat")
     try:
         # Field 22 in /proc/<pid>/stat is process start time (clock ticks).
@@ -91,6 +94,8 @@ def _pid_exists(pid: int) -> bool:
 
 def _read_process_cmdline(pid: int) -> Optional[str]:
     """Return the process command line as a space-separated string."""
+    if sys.platform == "win32":
+        return None
     cmdline_path = Path(f"/proc/{pid}/cmdline")
     try:
         raw = cmdline_path.read_bytes()
@@ -200,6 +205,65 @@ def _read_pid_record() -> Optional[dict]:
         return payload
     return None
 
+
+def write_pid_file() -> None:
+    """Write the current process PID and metadata to the gateway PID file."""
+    _write_json_file(_get_pid_path(), _build_pid_record())
+
+
+def write_runtime_status(
+    *,
+    gateway_state: Optional[str] = None,
+    exit_reason: Optional[str] = None,
+    platform: Optional[str] = None,
+    platform_state: Optional[str] = None,
+    error_code: Optional[str] = None,
+    error_message: Optional[str] = None,
+) -> None:
+    """Persist gateway runtime health information for diagnostics/status."""
+    path = _get_runtime_status_path()
+    payload = _read_json_file(path) or _build_runtime_status_record()
+    payload.setdefault("platforms", {})
+    payload.setdefault("kind", _GATEWAY_KIND)
+    payload["pid"] = os.getpid()
+    payload["start_time"] = _get_process_start_time(os.getpid())
+    payload["updated_at"] = _utc_now_iso()
+
+    if gateway_state is not None:
+        payload["gateway_state"] = gateway_state
+    if exit_reason is not None:
+        payload["exit_reason"] = exit_reason
+
+    if platform is not None:
+        platform_payload = payload["platforms"].get(platform, {})
+        if platform_state is not None:
+            platform_payload["state"] = platform_state
+        
+        # Always update errors to allow clearing them (passing None)
+        platform_payload["error_code"] = error_code
+        platform_payload["error_message"] = error_message
+        
+        platform_payload["updated_at"] = _utc_now_iso()
+        payload["platforms"][platform] = platform_payload
+
+    _write_json_file(path, payload)
+
+
+def read_runtime_status() -> Optional[dict[str, Any]]:
+    """Read the persisted gateway runtime health/status information."""
+    return _read_json_file(_get_runtime_status_path())
+
+
+def remove_pid_file() -> None:
+    """Remove the gateway PID file if it exists."""
+    try:
+        _get_pid_path().unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, Any]] = None) -> tuple[bool, Optional[dict[str, Any]]]:
+    """Acquire a machine-local lock keyed by scope + identity.
 
     Used to prevent multiple local gateways from using the same external identity
     at once (e.g. the same Telegram bot token across different HERMES_HOME dirs).

@@ -22,8 +22,8 @@ from tools.tool_backend_helpers import managed_nous_tools_enabled
 
 def check_mark(ok: bool) -> str:
     if ok:
-        return color("✓", Colors.GREEN)
-    return color("✗", Colors.RED)
+        return color("[v]", Colors.GREEN)
+    return color("[x]", Colors.RED)
 
 def redact_key(key: str) -> str:
     """Redact an API key for display."""
@@ -85,15 +85,15 @@ def show_status(args):
     deep = getattr(args, 'deep', False)
     
     print()
-    print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│                 ⚕ Hermes Agent Status                  │", Colors.CYAN))
-    print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
+    print(color("+---------------------------------------------------------+", Colors.CYAN))
+    print(color("|                 * Hermes Agent Status                  |", Colors.CYAN))
+    print(color("+---------------------------------------------------------+", Colors.CYAN))
     
     # =========================================================================
     # Environment
     # =========================================================================
     print()
-    print(color("◆ Environment", Colors.CYAN, Colors.BOLD))
+    print(color(">> Environment", Colors.CYAN, Colors.BOLD))
     print(f"  Project:      {PROJECT_ROOT}")
     print(f"  Python:       {sys.version.split()[0]}")
     
@@ -112,7 +112,7 @@ def show_status(args):
     # API Keys
     # =========================================================================
     print()
-    print(color("◆ API Keys", Colors.CYAN, Colors.BOLD))
+    print(color(">> API Keys", Colors.CYAN, Colors.BOLD))
     
     keys = {
         "OpenRouter": "OPENROUTER_API_KEY",
@@ -123,7 +123,7 @@ def show_status(args):
         "MiniMax-CN": "MINIMAX_CN_API_KEY",
         "Firecrawl": "FIRECRAWL_API_KEY",
         "Tavily": "TAVILY_API_KEY",
-        "Browserbase": "BROWSERBASE_API_KEY",  # Optional — local browser works without this
+        "Browserbase": "BROWSERBASE_API_KEY",  # Optional - local browser works without this
         "FAL": "FAL_KEY",
         "Tinker": "TINKER_API_KEY",
         "WandB": "WANDB_API_KEY",
@@ -149,7 +149,7 @@ def show_status(args):
     # Auth Providers (OAuth)
     # =========================================================================
     print()
-    print(color("◆ Auth Providers", Colors.CYAN, Colors.BOLD))
+    print(color(">> Auth Providers", Colors.CYAN, Colors.BOLD))
 
     try:
         from hermes_cli.auth import get_nous_auth_status, get_codex_auth_status
@@ -194,11 +194,11 @@ def show_status(args):
     if managed_nous_tools_enabled():
         features = get_nous_subscription_features(config)
         print()
-        print(color("◆ Nous Subscription Features", Colors.CYAN, Colors.BOLD))
+        print(color(">> Nous Subscription Features", Colors.CYAN, Colors.BOLD))
         if not features.nous_auth_present:
-            print("  Nous Portal   ✗ not logged in")
+            print("  Nous Portal   [x] not logged in")
         else:
-            print("  Nous Portal   ✓ managed tools available")
+            print("  Nous Portal   [v] managed tools available")
         for feature in features.items():
             if feature.managed_by_nous:
                 state = "active via Nous subscription"
@@ -217,7 +217,7 @@ def show_status(args):
     # API-Key Providers
     # =========================================================================
     print()
-    print(color("◆ API-Key Providers", Colors.CYAN, Colors.BOLD))
+    print(color(">> API-Key Providers", Colors.CYAN, Colors.BOLD))
 
     apikey_providers = {
         "Z.AI / GLM":       ("GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"),
@@ -239,7 +239,7 @@ def show_status(args):
     # Terminal Configuration
     # =========================================================================
     print()
-    print(color("◆ Terminal Backend", Colors.CYAN, Colors.BOLD))
+    print(color(">> Terminal Backend", Colors.CYAN, Colors.BOLD))
     
     terminal_env = os.getenv("TERMINAL_ENV", "")
     if not terminal_env:
@@ -271,7 +271,7 @@ def show_status(args):
     # Messaging Platforms
     # =========================================================================
     print()
-    print(color("◆ Messaging Platforms", Colors.CYAN, Colors.BOLD))
+    print(color(">> Messaging Platforms", Colors.CYAN, Colors.BOLD))
     
     platforms = {
         "Telegram": ("TELEGRAM_BOT_TOKEN", "TELEGRAM_HOME_CHANNEL"),
@@ -304,7 +304,7 @@ def show_status(args):
     # Gateway Status
     # =========================================================================
     print()
-    print(color("◆ Gateway Service", Colors.CYAN, Colors.BOLD))
+    print(color(">> Gateway Service", Colors.CYAN, Colors.BOLD))
     
     if sys.platform.startswith('linux'):
         try:
@@ -347,7 +347,7 @@ def show_status(args):
     # Cron Jobs
     # =========================================================================
     print()
-    print(color("◆ Scheduled Jobs", Colors.CYAN, Colors.BOLD))
+    print(color(">> Scheduled Jobs", Colors.CYAN, Colors.BOLD))
     
     jobs_file = get_hermes_home() / "cron" / "jobs.json"
     if jobs_file.exists():
@@ -367,7 +367,7 @@ def show_status(args):
     # Sessions
     # =========================================================================
     print()
-    print(color("◆ Sessions", Colors.CYAN, Colors.BOLD))
+    print(color(">> Sessions", Colors.CYAN, Colors.BOLD))
     
     sessions_file = get_hermes_home() / "sessions" / "sessions.json"
     if sessions_file.exists():
@@ -386,7 +386,7 @@ def show_status(args):
     # =========================================================================
     if deep:
         print()
-        print(color("◆ Deep Checks", Colors.CYAN, Colors.BOLD))
+        print(color(">> Deep Checks", Colors.CYAN, Colors.BOLD))
         
         # Check OpenRouter connectivity
         openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
@@ -418,7 +418,7 @@ def show_status(args):
             pass
     
     print()
-    print(color("─" * 60, Colors.DIM))
+    print(color("-" * 60, Colors.DIM))
     print(color("  Run 'hermes doctor' for detailed diagnostics", Colors.DIM))
     print(color("  Run 'hermes setup' to configure", Colors.DIM))
     print()
