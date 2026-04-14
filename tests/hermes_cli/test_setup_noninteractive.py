@@ -144,6 +144,46 @@ class TestNonInteractiveSetup:
         out = capsys.readouterr().out
         assert "hermes config set model.provider custom" in out
 
+    def test_chat_requires_tty_when_provider_is_configured(self, capsys):
+        """Bare `hermes` should exit cleanly instead of crashing when no TTY is attached."""
+        from hermes_cli.main import cmd_chat
+
+        args = _make_chat_args()
+
+        with (
+            patch("hermes_cli.main._has_any_provider_configured", return_value=True),
+            patch("sys.stdin") as mock_stdin,
+        ):
+            mock_stdin.isatty.return_value = False
+            with pytest.raises(SystemExit) as exc:
+                cmd_chat(args)
+
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "requires an interactive terminal" in err
+
+    def test_chat_reports_missing_windows_console_cleanly(self, capsys):
+        """Bare `hermes` should convert prompt_toolkit console errors into a clear message."""
+        from prompt_toolkit.output.win32 import NoConsoleScreenBufferError
+        from hermes_cli.main import cmd_chat
+
+        args = _make_chat_args()
+
+        with (
+            patch("hermes_cli.main._has_any_provider_configured", return_value=True),
+            patch("sys.stdin") as mock_stdin,
+            patch("hermes_cli.banner.prefetch_update_check"),
+            patch("tools.skills_sync.sync_skills"),
+            patch("cli.main", side_effect=NoConsoleScreenBufferError()),
+        ):
+            mock_stdin.isatty.return_value = True
+            with pytest.raises(SystemExit) as exc:
+                cmd_chat(args)
+
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "requires a real interactive terminal on Windows" in err
+
     def test_returning_user_terminal_menu_choice_dispatches_terminal_section(self, tmp_path):
         """Returning-user menu should map Terminal Backend to the terminal setup, not TTS."""
         from hermes_cli import setup as setup_mod

@@ -43,6 +43,16 @@ def _make_tool_defs(*names: str) -> list:
     ]
 
 
+def test_run_agent_defaults_to_codex_model():
+    import inspect
+
+    agent_defaults = inspect.signature(AIAgent).parameters
+    main_defaults = inspect.signature(run_agent.main).parameters
+
+    assert agent_defaults["model"].default == "gpt-5.3-codex"
+    assert main_defaults["model"].default == "gpt-5.3-codex"
+
+
 @pytest.fixture()
 def agent():
     """Minimal AIAgent with mocked OpenAI client and tool loading."""

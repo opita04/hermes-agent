@@ -950,6 +950,15 @@ def resolve_provider(
     except Exception as e:
         logger.debug("Could not detect active auth provider: %s", e)
 
+    # Prefer Codex OAuth when it is available. This keeps fresh installs on
+    # OpenAI auth instead of falling through to OpenRouter just because an
+    # OpenAI-compatible key is present.
+    try:
+        if get_codex_auth_status().get("logged_in"):
+            return "openai-codex"
+    except Exception as e:
+        logger.debug("Could not detect Codex auth provider: %s", e)
+
     if has_usable_secret(os.getenv("OPENAI_API_KEY")) or has_usable_secret(os.getenv("OPENROUTER_API_KEY")):
         return "openrouter"
 

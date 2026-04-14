@@ -1,4 +1,5 @@
 from hermes_cli import runtime_provider as rp
+from hermes_cli import auth as auth_mod
 
 
 def test_resolve_runtime_provider_uses_credential_pool(monkeypatch):
@@ -222,6 +223,17 @@ def test_qwen_oauth_auto_fallthrough_on_auth_failure(monkeypatch):
     resolved = rp.resolve_runtime_provider(requested="auto")
     # The fallthrough means it won't be qwen-oauth
     assert resolved["provider"] != "qwen-oauth"
+
+def test_resolve_provider_prefers_codex_oauth_when_logged_in(monkeypatch):
+    monkeypatch.setattr(
+        auth_mod,
+        "get_codex_auth_status",
+        lambda: {"logged_in": True},
+    )
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    assert rp.resolve_provider("auto") == "openai-codex"
 
 
 def test_resolve_runtime_provider_ai_gateway(monkeypatch):

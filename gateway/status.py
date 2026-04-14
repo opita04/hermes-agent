@@ -17,6 +17,7 @@ import os
 import signal
 import subprocess
 import sys
+import ctypes
 from datetime import datetime, timezone
 from pathlib import Path
 from hermes_constants import get_hermes_home
@@ -27,6 +28,8 @@ _RUNTIME_STATUS_FILE = "gateway_state.json"
 _LOCKS_DIRNAME = "gateway-locks"
 _IS_WINDOWS = sys.platform == "win32"
 _UNSET = object()
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_STILL_ACTIVE = 259
 
 
 def _get_pid_path() -> Path:
@@ -143,6 +146,43 @@ def _record_looks_like_gateway(record: dict[str, Any]) -> bool:
         "gateway/run.py",
     )
     return any(pattern in cmdline for pattern in patterns)
+
+
+def _pid_is_running(pid: int) -> bool:
+    """Return True when the PID appears to be a live process.
+
+    ``os.kill(pid, 0)`` works well on POSIX, but on Windows it can raise
+    ``OSError: [WinError 87] The parameter is incorrect`` for stale/non-live
+    PIDs during lock probing. Use a Windows-specific OpenProcess probe there.
+    """
+    if os.name == "nt":
+        try:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not handle:
+                err = ctypes.get_last_error()
+                # Access denied still means the process exists.
+                if err == 5:
+                    return True
+                return False
+            try:
+                exit_code = ctypes.c_ulong()
+                if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    err = ctypes.get_last_error()
+                    if err == 5:
+                        return True
+                    return False
+                return exit_code.value == _STILL_ACTIVE
+            finally:
+                kernel32.CloseHandle(handle)
+        except Exception:
+            return False
+
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
 
 
 def _build_pid_record() -> dict:
@@ -311,9 +351,7 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, 
 
         stale = existing_pid is None
         if not stale:
-            try:
-                os.kill(existing_pid, 0)
-            except (ProcessLookupError, PermissionError):
+            if not _pid_is_running(existing_pid):
                 stale = True
             else:
                 current_start = _get_process_start_time(existing_pid)
@@ -415,8 +453,10 @@ def get_running_pid() -> Optional[int]:
         return None
 
     try:
-        os.kill(pid, 0)  # signal 0 = existence check, no actual signal sent
-    except (ProcessLookupError, PermissionError):
+        if not _pid_is_running(pid):
+            remove_pid_file()
+            return None
+    except Exception:
         remove_pid_file()
         return None
 

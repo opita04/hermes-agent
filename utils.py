@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import tempfile
+import sys
 from pathlib import Path
 from typing import Any, Union
 
@@ -13,6 +14,24 @@ logger = logging.getLogger(__name__)
 
 
 TRUTHY_STRINGS = frozenset({"1", "true", "yes", "on"})
+
+
+def configure_utf8_stdio() -> None:
+    """Best-effort reconfigure console streams to handle UTF-8 text.
+
+    Windows terminals often default to a legacy code page such as cp1252.
+    Hermes emits unicode in both prints and log messages, so reconfigure the
+    live stdout/stderr streams early when the runtime supports it.
+    """
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass
 
 
 def is_truthy_value(value: Any, default: bool = False) -> bool:

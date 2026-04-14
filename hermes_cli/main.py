@@ -71,6 +71,10 @@ def _require_tty(command_name: str) -> None:
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils import configure_utf8_stdio
+
+configure_utf8_stdio()
+
 # ---------------------------------------------------------------------------
 # Profile override — MUST happen before any hermes module import.
 #
@@ -732,6 +736,8 @@ def cmd_chat(args):
         print("You can run 'hermes setup' at any time to configure.")
         sys.exit(1)
 
+    _require_tty("chat")
+
     # Start update check in background (runs while other init happens)
     try:
         from hermes_cli.banner import prefetch_update_check
@@ -781,6 +787,20 @@ def cmd_chat(args):
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
+    except Exception as e:
+        try:
+            from prompt_toolkit.output.win32 import NoConsoleScreenBufferError
+        except Exception:
+            NoConsoleScreenBufferError = None
+        if NoConsoleScreenBufferError is not None and isinstance(e, NoConsoleScreenBufferError):
+            print(
+                "Error: 'hermes chat' requires a real interactive terminal on Windows.\n"
+                "No Windows console screen buffer was available in this session.\n"
+                "Run Hermes in Windows Terminal, PowerShell, cmd.exe, or WSL instead.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        raise
 
 
 def cmd_gateway(args):

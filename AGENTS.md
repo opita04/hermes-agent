@@ -421,6 +421,11 @@ automatically scope to the active profile.
 
 ## Known Pitfalls
 
+### Launchpad is a real deployment target
+This repo is commonly launched through `C:\AI\Openclaw-Projects\launchpad`, not only by running Hermes directly.
+If a Hermes change affects startup, gateway launch, packaging, environment handling, path resolution, or any Launchpad integration point, update the Launchpad copy as needed and rebuild/recreate the Launchpad `.exe`.
+Do not treat a repo-only fix as complete if Launchpad still points at stale behavior.
+
 ### DO NOT hardcode `~/.hermes` paths
 Use `get_hermes_home()` from `hermes_constants` for code paths. Use `display_hermes_home()`
 for user-facing print/log messages. Hardcoding `~/.hermes` breaks profiles — each profile
