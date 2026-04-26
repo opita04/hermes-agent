@@ -581,7 +581,17 @@ class DiscordAdapter(BasePlatformAdapter):
                     if not _bot_mentioned:
                         return  # Talking to someone else, don't interrupt
 
-                await self._handle_message(message)
+                task = asyncio.create_task(adapter_self._handle_message(message))
+
+                def _log_message_task_error(done: asyncio.Task) -> None:
+                    try:
+                        done.result()
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception:
+                        logger.exception("[%s] Discord message handler failed", adapter_self.name)
+
+                task.add_done_callback(_log_message_task_error)
 
             @self._client.event
             async def on_voice_state_update(member, before, after):

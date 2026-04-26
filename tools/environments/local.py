@@ -184,12 +184,9 @@ def _find_bash() -> str:
     if custom and os.path.isfile(custom):
         return custom
 
-    # shutil.which finds bash.exe if Git\bin is on PATH
-    found = shutil.which("bash")
-    if found:
-        return found
-
-    # Check common Git for Windows install locations
+    # Prefer Git for Windows install locations before PATH lookup.  Windows
+    # also ships C:\Windows\System32\bash.exe as the WSL launcher; that is not
+    # a POSIX toolchain and can start with a PATH that cannot find sed/head/wc.
     for candidate in (
         os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Git", "bin", "bash.exe"),
         os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Git", "bin", "bash.exe"),
@@ -197,6 +194,16 @@ def _find_bash() -> str:
     ):
         if candidate and os.path.isfile(candidate):
             return candidate
+
+    # PATH fallback is okay as long as it is not the WSL launcher.
+    found = shutil.which("bash")
+    if found:
+        normalized = os.path.normcase(os.path.normpath(found))
+        system32_bash = os.path.normcase(os.path.normpath(
+            os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "bash.exe")
+        ))
+        if normalized != system32_bash:
+            return found
 
     raise RuntimeError(
         "Git Bash not found. Hermes Agent requires Git for Windows on Windows.\n"

@@ -595,11 +595,13 @@ class KawaiiSpinner:
             except Exception:
                 pass
             return
+        if self._out is None:
+            return
         try:
             self._out.write(text + end)
             if flush:
                 self._out.flush()
-        except (ValueError, OSError):
+        except (AttributeError, ValueError, OSError):
             pass
 
     @property

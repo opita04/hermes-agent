@@ -130,27 +130,37 @@ class _SafeWriter:
         object.__setattr__(self, "_inner", inner)
 
     def write(self, data):
+        if self._inner is None:
+            return len(data) if isinstance(data, str) else 0
         try:
             return self._inner.write(data)
-        except (OSError, ValueError):
+        except (AttributeError, OSError, ValueError):
             return len(data) if isinstance(data, str) else 0
 
     def flush(self):
+        if self._inner is None:
+            return
         try:
             self._inner.flush()
-        except (OSError, ValueError):
+        except (AttributeError, OSError, ValueError):
             pass
 
     def fileno(self):
+        if self._inner is None:
+            raise OSError("stdio stream is unavailable")
         return self._inner.fileno()
 
     def isatty(self):
+        if self._inner is None:
+            return False
         try:
             return self._inner.isatty()
-        except (OSError, ValueError):
+        except (AttributeError, OSError, ValueError):
             return False
 
     def __getattr__(self, name):
+        if self._inner is None:
+            raise AttributeError(name)
         return getattr(self._inner, name)
 
 
@@ -158,7 +168,7 @@ def _install_safe_stdio() -> None:
     """Wrap stdout/stderr so best-effort console output cannot crash the agent."""
     for stream_name in ("stdout", "stderr"):
         stream = getattr(sys, stream_name, None)
-        if stream is not None and not isinstance(stream, _SafeWriter):
+        if not isinstance(stream, _SafeWriter):
             setattr(sys, stream_name, _SafeWriter(stream))
 
 
@@ -3580,11 +3590,18 @@ class AIAgent:
         self._reasoning_deltas_fired = False
         for attempt in range(max_stream_retries + 1):
             try:
+                completed_output_items = []
                 with active_client.responses.stream(**api_kwargs) as stream:
                     for event in stream:
                         if self._interrupt_requested:
                             break
                         event_type = getattr(event, "type", "")
+                        if event_type == "response.output_item.done":
+                            item = getattr(event, "item", None)
+                            if item is not None:
+                                completed_output_items.append(item)
+                                if getattr(item, "type", None) == "function_call":
+                                    has_tool_calls = True
                         # Fire callbacks on text content deltas (suppress during tool calls)
                         if "output_text.delta" in event_type or event_type == "response.output_text.delta":
                             delta_text = getattr(event, "delta", "")
@@ -3605,7 +3622,15 @@ class AIAgent:
                             reasoning_text = getattr(event, "delta", "")
                             if reasoning_text:
                                 self._fire_reasoning_delta(reasoning_text)
-                    return stream.get_final_response()
+                    final_response = stream.get_final_response()
+                    if completed_output_items and not (getattr(final_response, "output", None) or []):
+                        if hasattr(final_response, "model_copy"):
+                            return final_response.model_copy(update={"output": completed_output_items})
+                        try:
+                            final_response.output = completed_output_items
+                        except Exception:
+                            pass
+                    return final_response
             except (_httpx.RemoteProtocolError, _httpx.ReadTimeout, _httpx.ConnectError, ConnectionError) as exc:
                 if attempt < max_stream_retries:
                     logger.debug(

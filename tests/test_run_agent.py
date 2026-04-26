@@ -2293,6 +2293,13 @@ class TestSafeWriter:
         writer = _SafeWriter(inner)
         writer.flush()  # should not raise
 
+    def test_write_ignores_missing_inner_stream(self):
+        """pythonw.exe can expose stdout/stderr as None."""
+        from run_agent import _SafeWriter
+        writer = _SafeWriter(None)
+        assert writer.write("hello") == 5
+        writer.flush()
+
     def test_print_survives_broken_stdout(self, monkeypatch):
         """print() through _SafeWriter doesn't crash on broken pipe."""
         import sys
@@ -2306,6 +2313,23 @@ class TestSafeWriter:
             print("this should not crash")  # would raise without _SafeWriter
         finally:
             sys.stdout = original
+
+    def test_install_safe_stdio_wraps_missing_streams(self):
+        """Missing pythonw stdio handles should become safe no-op writers."""
+        import sys
+        from run_agent import _SafeWriter, _install_safe_stdio
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        try:
+            sys.stdout = None
+            sys.stderr = None
+            _install_safe_stdio()
+            assert isinstance(sys.stdout, _SafeWriter)
+            assert isinstance(sys.stderr, _SafeWriter)
+            print("this should not crash")
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
 
     def test_installed_in_run_conversation(self, agent):
         """run_conversation installs _SafeWriter on stdio."""

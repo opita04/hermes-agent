@@ -65,6 +65,21 @@ class TestPrintAbove:
         
         assert "should go to buf" in buf.getvalue()
 
+    def test_print_above_ignores_missing_stdout(self):
+        """pythonw.exe can expose sys.stdout as None; spinner output must not crash."""
+        spinner = KawaiiSpinner("test")
+        spinner._out = None
+
+        spinner.print_above("no console available")
+
+    def test_stop_ignores_missing_stdout(self):
+        """Final spinner messages must be best-effort when stdout is unavailable."""
+        spinner = KawaiiSpinner("test")
+        spinner._out = None
+        spinner.start_time = time.time()
+
+        spinner.stop("done")
+
 
 # =========================================================================
 # _build_child_progress_callback tests
