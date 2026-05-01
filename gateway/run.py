@@ -408,6 +408,24 @@ def _resolve_hermes_bin() -> Optional[list[str]]:
     return None
 
 
+def _path_for_bash_command(value: str) -> str:
+    """Convert Windows absolute paths to Git Bash/MSYS paths for bash -c."""
+    if not value:
+        return value
+
+    match = re.match(r"^([a-zA-Z]):[\\/](.*)", value)
+    if not match:
+        return value
+
+    drive = match.group(1).lower()
+    rest = match.group(2).replace("\\", "/")
+    return f"/{drive}/{rest}"
+
+
+def _quote_for_bash_command(value: str) -> str:
+    return shlex.quote(_path_for_bash_command(value))
+
+
 class GatewayRunner:
     """
     Main gateway controller.
@@ -4786,10 +4804,10 @@ class GatewayRunner:
         # Spawn `hermes update` detached so it survives gateway restart.
         # Use setsid for portable session detach (works under system services
         # where systemd-run --user fails due to missing D-Bus session).
-        hermes_cmd_str = " ".join(shlex.quote(part) for part in hermes_cmd)
+        hermes_cmd_str = " ".join(_quote_for_bash_command(part) for part in hermes_cmd)
         update_cmd = (
-            f"{hermes_cmd_str} update > {shlex.quote(str(output_path))} 2>&1; "
-            f"status=$?; printf '%s' \"$status\" > {shlex.quote(str(exit_code_path))}"
+            f"{hermes_cmd_str} update > {_quote_for_bash_command(str(output_path))} 2>&1; "
+            f"status=$?; printf '%s' \"$status\" > {_quote_for_bash_command(str(exit_code_path))}"
         )
         try:
             setsid_bin = shutil.which("setsid")
@@ -4882,7 +4900,7 @@ class GatewayRunner:
             elif not claimed_path.exists():
                 return True
 
-            pending = json.loads(claimed_path.read_text())
+            pending = json.loads(claimed_path.read_text(encoding="utf-8"))
             platform_str = pending.get("platform")
             chat_id = pending.get("chat_id")
 
@@ -4893,13 +4911,13 @@ class GatewayRunner:
                 claimed_path.replace(pending_path)
                 return False
 
-            exit_code_raw = exit_code_path.read_text().strip() or "1"
+            exit_code_raw = exit_code_path.read_text(encoding="utf-8").strip() or "1"
             exit_code = int(exit_code_raw)
 
             # Read the captured update output
             output = ""
             if output_path.exists():
-                output = output_path.read_text()
+                output = output_path.read_text(encoding="utf-8", errors="replace")
 
             # Resolve adapter
             platform = Platform(platform_str)
@@ -6219,12 +6237,19 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
         pass
 
     # Configure rotating file log so gateway output is persisted for debugging
+    if hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     log_dir = _hermes_home / 'logs'
     log_dir.mkdir(parents=True, exist_ok=True)
     file_handler = RotatingFileHandler(
         log_dir / 'gateway.log',
         maxBytes=5 * 1024 * 1024,
         backupCount=3,
+        encoding="utf-8",
     )
     from agent.redact import RedactingFormatter
     file_handler.setFormatter(RedactingFormatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
@@ -6251,6 +6276,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
         log_dir / 'errors.log',
         maxBytes=2 * 1024 * 1024,
         backupCount=2,
+        encoding="utf-8",
     )
     error_handler.setLevel(logging.WARNING)
     error_handler.setFormatter(RedactingFormatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))

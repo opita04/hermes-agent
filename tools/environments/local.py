@@ -3,6 +3,7 @@
 import glob
 import os
 import platform
+import re
 import shutil
 import signal
 import subprocess
@@ -27,6 +28,20 @@ _OUTPUT_FENCE = "__HERMES_FENCE_a9f7b3__"
 # Built dynamically from the provider registry so new providers are
 # automatically covered without manual blocklist maintenance.
 _HERMES_PROVIDER_ENV_FORCE_PREFIX = "_HERMES_FORCE_"
+
+
+def _coerce_windows_subprocess_cwd(cwd: str) -> str:
+    """Convert Git Bash/MSYS drive paths to Windows cwd paths for Popen."""
+    if not (_IS_WINDOWS and cwd):
+        return cwd
+
+    match = re.match(r"^/([a-zA-Z])(?:/|$)(.*)", cwd)
+    if not match:
+        return cwd
+
+    drive = match.group(1).upper()
+    rest = match.group(2).replace("/", "\\")
+    return f"{drive}:\\" + rest if rest else f"{drive}:\\"
 
 
 def _build_provider_env_blocklist() -> frozenset:
@@ -386,7 +401,7 @@ class LocalEnvironment(PersistentShellMixin, BaseEnvironment):
     def _execute_oneshot(self, command: str, cwd: str = "", *,
                          timeout: int | None = None,
                          stdin_data: str | None = None) -> dict:
-        work_dir = cwd or self.cwd or os.getcwd()
+        work_dir = _coerce_windows_subprocess_cwd(cwd or self.cwd or os.getcwd())
         effective_timeout = timeout or self.timeout
         exec_command, sudo_stdin = self._prepare_command(command)
 

@@ -284,6 +284,38 @@ class TestHandleUpdateCommand:
         assert "Starting Hermes update" in result
 
     @pytest.mark.asyncio
+    async def test_windows_update_command_uses_bash_paths(self, tmp_path):
+        """Git Bash update commands must not contain raw Windows paths."""
+        runner = _make_runner()
+        event = _make_event()
+
+        fake_root = tmp_path / "project"
+        fake_root.mkdir()
+        (fake_root / ".git").mkdir()
+        (fake_root / "gateway").mkdir()
+        (fake_root / "gateway" / "run.py").touch()
+        fake_file = str(fake_root / "gateway" / "run.py")
+        hermes_home = tmp_path / "hermes"
+        hermes_home.mkdir()
+
+        mock_popen = MagicMock()
+        with patch("gateway.run._hermes_home", hermes_home), \
+             patch("gateway.run.__file__", fake_file), \
+             patch("gateway.run._resolve_hermes_bin",
+                   return_value=[r"C:\AI\Agents\hermes-agent-clean\venv\Scripts\python.exe",
+                                 "-m", "hermes_cli.main"]), \
+             patch("shutil.which", return_value=None), \
+             patch("subprocess.Popen", mock_popen):
+            result = await runner._handle_update_command(event)
+
+        command = mock_popen.call_args[0][0][2]
+        assert r"C:\AI\Agents" not in command
+        assert "/c/AI/Agents/hermes-agent-clean/venv/Scripts/python.exe" in command
+        assert ".update_exit_code" in command
+        assert str(hermes_home) not in command
+        assert "Starting Hermes update" in result
+
+    @pytest.mark.asyncio
     async def test_popen_failure_cleans_up(self, tmp_path):
         """Cleans up pending file and returns error on Popen failure."""
         runner = _make_runner()
@@ -413,11 +445,12 @@ class TestSendUpdateNotification:
             "user_id": "12345",
             "timestamp": "2026-03-04T21:00:00",
         }
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(json.dumps(pending), encoding="utf-8")
         (hermes_home / ".update_output.txt").write_text(
-            "→ Found 3 new commit(s)\n✓ Code updated!\n✓ Update complete!"
+            "→ Found 3 new commit(s)\n✓ Code updated!\n✓ Update complete!",
+            encoding="utf-8",
         )
-        (hermes_home / ".update_exit_code").write_text("0")
+        (hermes_home / ".update_exit_code").write_text("0", encoding="utf-8")
 
         # Mock the adapter
         mock_adapter = AsyncMock()
@@ -440,11 +473,12 @@ class TestSendUpdateNotification:
         hermes_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (hermes_home / ".update_pending.json").write_text(json.dumps(pending), encoding="utf-8")
         (hermes_home / ".update_output.txt").write_text(
-            "\x1b[32m✓ Code updated!\x1b[0m\n\x1b[1mDone\x1b[0m"
+            "\x1b[32m✓ Code updated!\x1b[0m\n\x1b[1mDone\x1b[0m",
+            encoding="utf-8",
         )
-        (hermes_home / ".update_exit_code").write_text("0")
+        (hermes_home / ".update_exit_code").write_text("0", encoding="utf-8")
 
         mock_adapter = AsyncMock()
         runner.adapters = {Platform.TELEGRAM: mock_adapter}
@@ -536,9 +570,9 @@ class TestSendUpdateNotification:
         exit_code_path = hermes_home / ".update_exit_code"
         pending_path.write_text(json.dumps({
             "platform": "telegram", "chat_id": "111", "user_id": "222",
-        }))
-        output_path.write_text("✓ Done")
-        exit_code_path.write_text("0")
+        }), encoding="utf-8")
+        output_path.write_text("✓ Done", encoding="utf-8")
+        exit_code_path.write_text("0", encoding="utf-8")
 
         mock_adapter = AsyncMock()
         runner.adapters = {Platform.TELEGRAM: mock_adapter}
@@ -562,9 +596,9 @@ class TestSendUpdateNotification:
         exit_code_path = hermes_home / ".update_exit_code"
         pending_path.write_text(json.dumps({
             "platform": "telegram", "chat_id": "111", "user_id": "222",
-        }))
-        output_path.write_text("✓ Done")
-        exit_code_path.write_text("0")
+        }), encoding="utf-8")
+        output_path.write_text("✓ Done", encoding="utf-8")
+        exit_code_path.write_text("0", encoding="utf-8")
 
         # Adapter send raises
         mock_adapter = AsyncMock()
