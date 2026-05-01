@@ -406,6 +406,40 @@ class TestCmdUpdateLaunchdRestart:
         assert "Gateway restarted via launchd" not in captured
 
 
+class TestCmdUpdateWindowsTaskRestart:
+    """cmd_update detects and restarts the Windows Scheduled Task supervisor."""
+
+    @patch("shutil.which", return_value=None)
+    @patch("subprocess.run")
+    def test_update_detects_windows_task_and_restarts(
+        self, mock_run, _mock_which, mock_args, capsys, monkeypatch,
+    ):
+        monkeypatch.setattr(gateway_cli, "is_windows", lambda: True)
+        monkeypatch.setattr(gateway_cli, "is_linux", lambda: False)
+        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
+        monkeypatch.setattr(
+            gateway_cli,
+            "_ensure_user_systemd_env",
+            lambda: (_ for _ in ()).throw(AssertionError("systemd should not be checked on Windows")),
+        )
+        monkeypatch.setattr(gateway_cli, "windows_task_exists", lambda: True)
+        monkeypatch.setattr(gateway_cli, "windows_task_state", lambda: "Running")
+
+        restarts = []
+        monkeypatch.setattr(gateway_cli, "windows_restart", lambda: restarts.append("restart"))
+
+        mock_run.side_effect = _make_run_side_effect(commit_count="3")
+
+        with patch("gateway.status.get_running_pid", return_value=12345), \
+             patch("gateway.status.remove_pid_file"):
+            cmd_update(mock_args)
+
+        captured = capsys.readouterr().out
+        assert restarts == ["restart"]
+        assert "Gateway restarted via Windows Task Scheduler" in captured
+        assert "Restart it with: hermes gateway run" not in captured
+
+
 # ---------------------------------------------------------------------------
 # cmd_update — system-level systemd service detection
 # ---------------------------------------------------------------------------

@@ -30,61 +30,73 @@ from hermes_cli.colors import Colors, color
 
 def find_gateway_pids() -> list:
     """Find PIDs of running gateway processes."""
-    pids = []
     patterns = [
-        "hermes_cli.main gateway",
-        "hermes_cli/main.py gateway",
-        "hermes gateway",
+        "hermes_cli.main gateway run",
+        "hermes_cli/main.py gateway run",
+        "hermes_cli\\main.py gateway run",
+        "hermes gateway run",
         "gateway/run.py",
+        "gateway\\run.py",
+        "-m gateway.run",
     ]
 
     try:
         if is_windows():
-            # Windows: use wmic to search command lines
-            result = subprocess.run(
-                ["wmic", "process", "get", "ProcessId,CommandLine", "/FORMAT:LIST"],
-                capture_output=True, text=True
-            )
-            # Parse WMIC LIST output: blocks of "CommandLine=...\nProcessId=...\n"
-            current_cmd = ""
-            for line in result.stdout.split('\n'):
-                line = line.strip()
-                if line.startswith("CommandLine="):
-                    current_cmd = line[len("CommandLine="):]
-                elif line.startswith("ProcessId="):
-                    pid_str = line[len("ProcessId="):]
-                    if any(p in current_cmd for p in patterns):
+            return _find_windows_process_pids(patterns)
+
+        pids = []
+        result = subprocess.run(
+            ["ps", "aux"],
+            capture_output=True,
+            text=True
+        )
+        for line in result.stdout.split('\n'):
+            # Skip grep and current process
+            if 'grep' in line or str(os.getpid()) in line:
+                continue
+            for pattern in patterns:
+                if pattern in line:
+                    parts = line.split()
+                    if len(parts) > 1:
                         try:
-                            pid = int(pid_str)
-                            if pid != os.getpid() and pid not in pids:
+                            pid = int(parts[1])
+                            if pid not in pids:
                                 pids.append(pid)
                         except ValueError:
-                            pass
-                    current_cmd = ""
-        else:
-            result = subprocess.run(
-                ["ps", "aux"],
-                capture_output=True,
-                text=True
-            )
-            for line in result.stdout.split('\n'):
-                # Skip grep and current process
-                if 'grep' in line or str(os.getpid()) in line:
-                    continue
-                for pattern in patterns:
-                    if pattern in line:
-                        parts = line.split()
-                        if len(parts) > 1:
-                            try:
-                                pid = int(parts[1])
-                                if pid not in pids:
-                                    pids.append(pid)
-                            except ValueError:
-                                continue
-                        break
+                            continue
+                    break
     except Exception:
         pass
 
+    return pids
+
+
+def _find_windows_process_pids(patterns: list[str]) -> list[int]:
+    """Find Windows PIDs whose command line contains any requested pattern."""
+    pids: list[int] = []
+    try:
+        result = subprocess.run(
+            ["wmic", "process", "get", "ProcessId,CommandLine", "/FORMAT:LIST"],
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return pids
+    current_cmd = ""
+    for line in result.stdout.split('\n'):
+        line = line.strip()
+        if line.startswith("CommandLine="):
+            current_cmd = line[len("CommandLine="):]
+        elif line.startswith("ProcessId="):
+            pid_str = line[len("ProcessId="):]
+            if any(pattern in current_cmd for pattern in patterns):
+                try:
+                    pid = int(pid_str)
+                    if pid != os.getpid() and pid not in pids:
+                        pids.append(pid)
+                except ValueError:
+                    pass
+            current_cmd = ""
     return pids
 
 
@@ -1089,6 +1101,391 @@ def launchd_status(deep: bool = False):
 
 
 # =============================================================================
+# Windows Task Scheduler
+# =============================================================================
+
+def get_windows_task_name() -> str:
+    """Return the Task Scheduler name, scoped per Hermes profile."""
+    suffix = _profile_suffix()
+    return f"HermesGateway-{suffix}" if suffix else "HermesGateway"
+
+
+def get_windows_supervisor_script_path() -> Path:
+    """Return the profile-scoped PowerShell supervisor script path."""
+    return get_hermes_home() / "gateway-supervisor.ps1"
+
+
+def get_windows_startup_command_path() -> Path:
+    """Return the per-user Startup folder command path for non-admin fallback."""
+    startup_root = os.getenv("APPDATA")
+    if startup_root:
+        base = Path(startup_root) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    else:
+        base = get_hermes_home() / "startup"
+    return base / f"{get_windows_task_name()}.cmd"
+
+
+def _powershell_literal(value: str) -> str:
+    """Quote a string as a single-quoted PowerShell literal."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _windows_path_entries(venv_dir: Path | None) -> list[str]:
+    entries: list[str] = []
+    if venv_dir is not None:
+        entries.append(str((venv_dir / "Scripts").resolve()))
+    else:
+        entries.append(str((PROJECT_ROOT / "venv" / "Scripts").resolve()))
+
+    entries.append(str((PROJECT_ROOT / "node_modules" / ".bin").resolve()))
+
+    resolved_node = shutil.which("node")
+    if resolved_node:
+        entries.append(str(Path(resolved_node).resolve().parent))
+
+    entries.extend(part for part in os.environ.get("PATH", "").split(os.pathsep) if part)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        key = entry.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+    return deduped
+
+
+def generate_windows_supervisor_script() -> str:
+    """Generate a PowerShell supervisor that keeps the gateway child running."""
+    python_path = str(Path(get_python_path()).resolve())
+    working_dir = str(PROJECT_ROOT.resolve())
+    hermes_home = str(get_hermes_home().resolve())
+    log_dir = str((get_hermes_home() / "logs").resolve())
+    detected_venv = _detect_venv_dir()
+    venv_dir = str(detected_venv.resolve()) if detected_venv else str((PROJECT_ROOT / "venv").resolve())
+    path_value = ";".join(_windows_path_entries(detected_venv))
+
+    return f"""$ErrorActionPreference = 'Continue'
+$env:HERMES_HOME = {_powershell_literal(hermes_home)}
+$env:VIRTUAL_ENV = {_powershell_literal(venv_dir)}
+$env:PATH = {_powershell_literal(path_value)}
+$env:PYTHONUTF8 = '1'
+$env:PYTHONUNBUFFERED = '1'
+
+$logDir = {_powershell_literal(log_dir)}
+$stdoutLog = Join-Path $logDir 'gateway-supervisor.out.log'
+$stderrLog = Join-Path $logDir 'gateway-supervisor.err.log'
+$supervisorLog = Join-Path $logDir 'gateway-supervisor.log'
+
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+Set-Location -LiteralPath {_powershell_literal(working_dir)}
+
+while ($true) {{
+    $started = Get-Date -Format o
+    Add-Content -Path $supervisorLog -Value "$started starting gateway"
+    try {{
+        & {_powershell_literal(python_path)} -m hermes_cli.main gateway run --replace >> $stdoutLog 2>> $stderrLog
+        $code = $LASTEXITCODE
+        $ended = Get-Date -Format o
+        Add-Content -Path $supervisorLog -Value "$ended gateway exited with code $code; restarting in 10s"
+    }} catch {{
+        $failed = Get-Date -Format o
+        Add-Content -Path $stderrLog -Value "$failed supervisor error: $($_.Exception.Message)"
+    }}
+    Start-Sleep -Seconds 10
+}}
+"""
+
+
+def windows_task_exists() -> bool:
+    result = subprocess.run(
+        ["schtasks", "/Query", "/TN", get_windows_task_name()],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def windows_task_state() -> str | None:
+    result = subprocess.run(
+        ["schtasks", "/Query", "/TN", get_windows_task_name(), "/FO", "LIST", "/V"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+
+    for line in result.stdout.splitlines():
+        if line.lower().startswith("status:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def _windows_task_run_command() -> str:
+    script_path = get_windows_supervisor_script_path()
+    return f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{script_path}"'
+
+
+def _windows_startup_command() -> str:
+    script_path = get_windows_supervisor_script_path()
+    return (
+        "@echo off\r\n"
+        f'start "" /min powershell.exe -NoProfile -ExecutionPolicy Bypass '
+        f'-WindowStyle Hidden -File "{script_path}"\r\n'
+    )
+
+
+def _write_windows_startup_command() -> Path:
+    startup_path = get_windows_startup_command_path()
+    startup_path.parent.mkdir(parents=True, exist_ok=True)
+    startup_path.write_text(_windows_startup_command(), encoding="utf-8")
+    return startup_path
+
+
+def windows_startup_command_exists() -> bool:
+    return get_windows_startup_command_path().exists()
+
+
+def find_windows_supervisor_pids() -> list[int]:
+    script_path = get_windows_supervisor_script_path()
+    return _find_windows_process_pids([str(script_path), script_path.name])
+
+
+def kill_windows_supervisor_processes() -> int:
+    killed = 0
+    for pid in find_windows_supervisor_pids():
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            print(f"⚠ Permission denied to kill supervisor PID {pid}")
+    return killed
+
+
+def _start_windows_supervisor_process() -> None:
+    if find_windows_supervisor_pids():
+        print("OK: Windows gateway supervisor is already running")
+        return
+
+    startup_path = get_windows_startup_command_path()
+    if not startup_path.exists():
+        _write_windows_startup_command()
+
+    kill_gateway_processes()
+
+    flags = 0
+    for attr in ("CREATE_NO_WINDOW", "CREATE_NEW_PROCESS_GROUP"):
+        flags |= getattr(subprocess, attr, 0)
+
+    subprocess.Popen(
+        [
+            "cmd.exe",
+            "/c",
+            str(startup_path),
+        ],
+        cwd=str(PROJECT_ROOT),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=flags,
+    )
+
+
+def windows_install(force: bool = False):
+    script_path = get_windows_supervisor_script_path()
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text(generate_windows_supervisor_script(), encoding="utf-8")
+
+    if windows_task_exists() and not force:
+        print(f"Windows gateway task already installed: {get_windows_task_name()}")
+        print(f"OK: Refreshed supervisor script: {script_path}")
+        print("Use --force to recreate the scheduled task")
+        return
+
+    try:
+        subprocess.run(
+            [
+                "schtasks",
+                "/Create",
+                "/TN",
+                get_windows_task_name(),
+                "/TR",
+                _windows_task_run_command(),
+                "/SC",
+                "ONLOGON",
+                "/RL",
+                "LIMITED",
+                "/F",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (getattr(exc, "stderr", None) or getattr(exc, "stdout", None) or str(exc)).strip()
+        startup_path = _write_windows_startup_command()
+        print()
+        print(f"Warning: Could not create Windows Scheduled Task ({detail})")
+        print(f"OK: Installed user Startup fallback: {startup_path}")
+        print("  The gateway supervisor will start when this Windows user logs in.")
+        return
+
+    try:
+        get_windows_startup_command_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    print()
+    print("OK: Windows gateway task installed!")
+    print()
+    print("Next steps:")
+    print("  hermes gateway start   # Start the supervised gateway now")
+    print("  hermes gateway status  # Check status")
+    from hermes_constants import display_hermes_home as _dhh
+    print(f"  Get-Content {_dhh()}\\logs\\gateway-supervisor.log -Tail 20  # View supervisor logs")
+
+
+def windows_uninstall():
+    task_name = get_windows_task_name()
+    subprocess.run(["schtasks", "/End", "/TN", task_name], check=False, capture_output=True, text=True)
+    subprocess.run(["schtasks", "/Delete", "/TN", task_name, "/F"], check=False)
+    try:
+        get_windows_startup_command_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+    supervisors = kill_windows_supervisor_processes()
+    killed = kill_gateway_processes()
+    if supervisors:
+        print(f"OK: Stopped {supervisors} supervisor process(es)")
+    if killed:
+        print(f"OK: Stopped {killed} gateway process(es)")
+    print("OK: Windows gateway task uninstalled")
+
+
+def windows_start():
+    task_exists = windows_task_exists()
+    if not task_exists and not windows_startup_command_exists():
+        print("Windows gateway task missing; installing service definition")
+        windows_install(force=False)
+        task_exists = windows_task_exists()
+
+    if task_exists and (windows_task_state() or "").lower() == "running":
+        print("OK: Windows gateway task is already running")
+        return
+
+    if task_exists:
+        subprocess.run(["schtasks", "/Run", "/TN", get_windows_task_name()], check=True)
+        print("OK: Windows gateway task started")
+    else:
+        _start_windows_supervisor_process()
+        print("OK: Windows gateway supervisor started")
+
+
+def windows_stop():
+    task_name = get_windows_task_name()
+    service_available = windows_task_exists()
+    if service_available:
+        subprocess.run(["schtasks", "/End", "/TN", task_name], check=False)
+
+    supervisors = kill_windows_supervisor_processes()
+    killed = kill_gateway_processes()
+    if service_available:
+        print("OK: Windows gateway task stopped")
+        if supervisors:
+            print(f"OK: Stopped {supervisors} supervisor process(es)")
+        if killed:
+            print(f"OK: Stopped {killed} gateway process(es)")
+    elif supervisors or killed:
+        if supervisors:
+            print(f"OK: Stopped {supervisors} supervisor process(es)")
+        if killed:
+            print(f"OK: Stopped {killed} gateway process(es)")
+    else:
+        print("No gateway processes found")
+
+
+def windows_restart():
+    task_exists = windows_task_exists()
+    if not task_exists and not windows_startup_command_exists():
+        print("Windows gateway task missing; installing service definition")
+        windows_install(force=False)
+        task_exists = windows_task_exists()
+    else:
+        script_path = get_windows_supervisor_script_path()
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text(generate_windows_supervisor_script(), encoding="utf-8")
+
+    if task_exists:
+        subprocess.run(["schtasks", "/End", "/TN", get_windows_task_name()], check=False)
+    kill_windows_supervisor_processes()
+    kill_gateway_processes()
+    if task_exists:
+        subprocess.run(["schtasks", "/Run", "/TN", get_windows_task_name()], check=True)
+        print("OK: Windows gateway task restarted")
+    else:
+        _start_windows_supervisor_process()
+        print("OK: Windows gateway supervisor restarted")
+
+
+def windows_status(deep: bool = False):
+    if windows_task_exists():
+        print(f"Windows task: {get_windows_task_name()}")
+        print(f"Supervisor script: {get_windows_supervisor_script_path()}")
+        result = subprocess.run(
+            ["schtasks", "/Query", "/TN", get_windows_task_name(), "/FO", "LIST", "/V"],
+            capture_output=True,
+            text=True,
+        )
+        if result.stdout:
+            for line in result.stdout.splitlines():
+                if line.startswith(("TaskName:", "Status:", "Last Run Time:", "Last Result:", "Task To Run:")):
+                    print(line)
+        state = (windows_task_state() or "").lower()
+        if state == "running":
+            print("OK: Windows gateway task is running")
+        else:
+            print("Windows gateway task is not running")
+            print("  Run: hermes gateway start")
+    elif windows_startup_command_exists():
+        print(f"Windows startup command: {get_windows_startup_command_path()}")
+        supervisors = find_windows_supervisor_pids()
+        if supervisors:
+            print("OK: Windows gateway supervisor is running")
+        else:
+            print("Windows gateway supervisor is not running")
+            print("  Run: hermes gateway start")
+    else:
+        print("Windows gateway service is not installed")
+        print("  Run: hermes gateway install")
+
+    pids = find_gateway_pids()
+    if pids:
+        print(f"Gateway process PID(s): {', '.join(map(str, pids))}")
+
+    runtime_lines = _runtime_health_lines()
+    if runtime_lines:
+        print()
+        print("Recent gateway health:")
+        for line in runtime_lines:
+            print(f"  {line}")
+
+    if deep:
+        log_file = get_hermes_home() / "logs" / "gateway-supervisor.log"
+        if log_file.exists():
+            print()
+            print("Recent supervisor logs:")
+            try:
+                lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()[-20:]
+                for line in lines:
+                    print(line)
+            except OSError as exc:
+                print(f"Could not read supervisor log: {exc}")
+
+
+# =============================================================================
 # Gateway Runner
 # =============================================================================
 
@@ -1592,6 +1989,8 @@ def _is_service_installed() -> bool:
         return get_systemd_unit_path(system=False).exists() or get_systemd_unit_path(system=True).exists()
     elif is_macos():
         return get_launchd_plist_path().exists()
+    elif is_windows():
+        return windows_task_exists() or windows_startup_command_exists()
     return False
 
 
@@ -1624,6 +2023,10 @@ def _is_service_running() -> bool:
             capture_output=True, text=True
         )
         return result.returncode == 0
+    elif is_windows() and windows_task_exists():
+        return (windows_task_state() or "").lower() == "running" or len(find_gateway_pids()) > 0
+    elif is_windows() and windows_startup_command_exists():
+        return bool(find_windows_supervisor_pids() or find_gateway_pids())
     # Check for manual processes
     return len(find_gateway_pids()) > 0
 
@@ -1776,6 +2179,8 @@ def gateway_setup():
                     systemd_start()
                 elif is_macos():
                     launchd_start()
+                elif is_windows():
+                    windows_start()
             except subprocess.CalledProcessError as e:
                 print_error(f"  Failed to start: {e}")
     else:
@@ -1827,6 +2232,8 @@ def gateway_setup():
                         systemd_restart()
                     elif is_macos():
                         launchd_restart()
+                    elif is_windows():
+                        windows_restart()
                     else:
                         kill_gateway_processes()
                         print_info("Start manually: hermes gateway")
@@ -1839,28 +2246,35 @@ def gateway_setup():
                         systemd_start()
                     elif is_macos():
                         launchd_start()
+                    elif is_windows():
+                        windows_start()
                 except subprocess.CalledProcessError as e:
                     print_error(f"  Start failed: {e}")
         else:
             print()
-            if is_linux() or is_macos():
-                platform_name = "systemd" if is_linux() else "launchd"
+            if is_linux() or is_macos() or is_windows():
+                platform_name = "systemd" if is_linux() else "launchd" if is_macos() else "Windows Scheduled Task"
                 if prompt_yes_no(f"  Install the gateway as a {platform_name} service? (runs in background, starts on boot)", True):
                     try:
                         installed_scope = None
                         did_install = False
                         if is_linux():
                             installed_scope, did_install = install_linux_gateway_from_setup(force=False)
-                        else:
+                        elif is_macos():
                             launchd_install(force=False)
+                            did_install = True
+                        else:
+                            windows_install(force=False)
                             did_install = True
                         print()
                         if did_install and prompt_yes_no("  Start the service now?", True):
                             try:
                                 if is_linux():
                                     systemd_start(system=installed_scope == "system")
-                                else:
+                                elif is_macos():
                                     launchd_start()
+                                else:
+                                    windows_start()
                             except subprocess.CalledProcessError as e:
                                 print_error(f"  Start failed: {e}")
                     except subprocess.CalledProcessError as e:
@@ -1913,6 +2327,8 @@ def gateway_command(args):
             systemd_install(force=force, system=system, run_as_user=run_as_user)
         elif is_macos():
             launchd_install(force)
+        elif is_windows():
+            windows_install(force=force)
         else:
             print("Service installation not supported on this platform.")
             print("Run manually: hermes gateway run")
@@ -1927,6 +2343,8 @@ def gateway_command(args):
             systemd_uninstall(system=system)
         elif is_macos():
             launchd_uninstall()
+        elif is_windows():
+            windows_uninstall()
         else:
             print("Not supported on this platform.")
             sys.exit(1)
@@ -1937,6 +2355,8 @@ def gateway_command(args):
             systemd_start(system=system)
         elif is_macos():
             launchd_start()
+        elif is_windows():
+            windows_start()
         else:
             print("Not supported on this platform.")
             sys.exit(1)
@@ -1958,6 +2378,9 @@ def gateway_command(args):
                 service_available = True
             except subprocess.CalledProcessError:
                 pass
+        elif is_windows():
+            windows_stop()
+            return
 
         killed = kill_gateway_processes()
         if not service_available:
@@ -1988,6 +2411,12 @@ def gateway_command(args):
                 service_available = True
             except subprocess.CalledProcessError:
                 pass
+        elif is_windows():
+            try:
+                windows_restart()
+                service_available = True
+            except subprocess.CalledProcessError:
+                service_configured = True
         
         if not service_available:
             # systemd/launchd restart failed — check if linger is the issue
@@ -2033,6 +2462,8 @@ def gateway_command(args):
             systemd_status(deep, system=system)
         elif is_macos() and get_launchd_plist_path().exists():
             launchd_status(deep)
+        elif is_windows():
+            windows_status(deep)
         else:
             # Check for manually running processes
             pids = find_gateway_pids()

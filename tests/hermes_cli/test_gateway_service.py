@@ -217,6 +217,131 @@ class TestGatewayServiceDetection:
 
         assert gateway_cli._is_service_running() is True
 
+    def test_find_gateway_pids_windows_detects_gateway_module_run(self, monkeypatch):
+        monkeypatch.setattr(gateway_cli, "is_windows", lambda: True)
+        monkeypatch.setattr(gateway_cli.os, "getpid", lambda: 99999)
+
+        def fake_run(cmd, capture_output=True, text=True, **kwargs):
+            assert cmd[:4] == ["wmic", "process", "get", "ProcessId,CommandLine"]
+            return SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    "CommandLine=C:\\Python\\python.exe -m gateway.run\r\r\n"
+                    "ProcessId=1234\r\r\n"
+                    "\r\r\n"
+                    "CommandLine=C:\\Python\\python.exe -m hermes_cli.main gateway status\r\r\n"
+                    "ProcessId=4321\r\r\n"
+                    "\r\r\n"
+                    "CommandLine=C:\\Python\\python.exe -m not_gateway.run\r\r\n"
+                    "ProcessId=5678\r\r\n"
+                ),
+                stderr="",
+            )
+
+        monkeypatch.setattr(gateway_cli.subprocess, "run", fake_run)
+
+        assert gateway_cli.find_gateway_pids() == [1234]
+
+
+class TestWindowsGatewayService:
+    def test_powershell_literal_escapes_single_quotes(self):
+        assert gateway_cli._powershell_literal("C:\\AI\\Jaime's\\Hermes") == "'C:\\AI\\Jaime''s\\Hermes'"
+
+    def test_windows_supervisor_script_restarts_gateway_with_profile_env(self, tmp_path, monkeypatch):
+        project_root = tmp_path / "project"
+        hermes_home = tmp_path / "hermes-home"
+        venv = project_root / "venv"
+        python_path = venv / "Scripts" / "python.exe"
+        project_root.mkdir()
+        hermes_home.mkdir()
+        python_path.parent.mkdir(parents=True)
+        python_path.write_text("", encoding="utf-8")
+
+        monkeypatch.setattr(gateway_cli, "PROJECT_ROOT", project_root)
+        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: hermes_home)
+        monkeypatch.setattr(gateway_cli, "_detect_venv_dir", lambda: venv)
+        monkeypatch.setattr(gateway_cli, "get_python_path", lambda: str(python_path))
+        monkeypatch.setenv("PATH", "C:\\Windows\\System32")
+
+        script = gateway_cli.generate_windows_supervisor_script()
+
+        assert "while ($true)" in script
+        assert "-m hermes_cli.main gateway run --replace" in script
+        assert f"$env:HERMES_HOME = {gateway_cli._powershell_literal(str(hermes_home.resolve()))}" in script
+        assert f"$env:VIRTUAL_ENV = {gateway_cli._powershell_literal(str(venv.resolve()))}" in script
+        assert "$env:PYTHONUTF8 = '1'" in script
+        assert "Start-Sleep -Seconds 10" in script
+
+    def test_windows_install_writes_supervisor_and_creates_task(self, tmp_path, monkeypatch):
+        script_path = tmp_path / "gateway-supervisor.ps1"
+        calls = []
+
+        monkeypatch.setattr(gateway_cli, "get_windows_supervisor_script_path", lambda: script_path)
+        monkeypatch.setattr(gateway_cli, "windows_task_exists", lambda: False)
+        monkeypatch.setattr(gateway_cli, "get_windows_task_name", lambda: "HermesGateway")
+        monkeypatch.setattr(gateway_cli, "generate_windows_supervisor_script", lambda: "supervisor script\n")
+
+        def fake_run(cmd, check=False, **kwargs):
+            calls.append(cmd)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(gateway_cli.subprocess, "run", fake_run)
+
+        gateway_cli.windows_install(force=False)
+
+        assert script_path.read_text(encoding="utf-8") == "supervisor script\n"
+        create_calls = [cmd for cmd in calls if cmd[:2] == ["schtasks", "/Create"]]
+        assert len(create_calls) == 1
+        assert "/SC" in create_calls[0]
+        assert "ONLOGON" in create_calls[0]
+        assert "powershell.exe" in " ".join(create_calls[0])
+
+    def test_windows_install_falls_back_to_startup_command_on_task_access_denied(self, tmp_path, monkeypatch):
+        script_path = tmp_path / "gateway-supervisor.ps1"
+        startup_path = tmp_path / "Startup" / "HermesGateway.cmd"
+
+        monkeypatch.setattr(gateway_cli, "get_windows_supervisor_script_path", lambda: script_path)
+        monkeypatch.setattr(gateway_cli, "get_windows_startup_command_path", lambda: startup_path)
+        monkeypatch.setattr(gateway_cli, "windows_task_exists", lambda: False)
+        monkeypatch.setattr(gateway_cli, "get_windows_task_name", lambda: "HermesGateway")
+        monkeypatch.setattr(gateway_cli, "generate_windows_supervisor_script", lambda: "supervisor script\n")
+
+        def fake_run(cmd, check=False, **kwargs):
+            raise gateway_cli.subprocess.CalledProcessError(1, cmd, stderr="Access is denied.")
+
+        monkeypatch.setattr(gateway_cli.subprocess, "run", fake_run)
+
+        gateway_cli.windows_install(force=False)
+
+        assert script_path.read_text(encoding="utf-8") == "supervisor script\n"
+        startup = startup_path.read_text(encoding="utf-8")
+        assert "powershell.exe" in startup
+        assert str(script_path) in startup
+
+    def test_gateway_start_routes_to_windows_task(self, monkeypatch):
+        monkeypatch.setattr(gateway_cli, "is_linux", lambda: False)
+        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
+        monkeypatch.setattr(gateway_cli, "is_windows", lambda: True)
+
+        calls = []
+        monkeypatch.setattr(gateway_cli, "windows_start", lambda: calls.append("start"))
+
+        gateway_cli.gateway_command(SimpleNamespace(gateway_command="start", system=False))
+
+        assert calls == ["start"]
+
+    def test_gateway_install_routes_to_windows_task(self, monkeypatch):
+        monkeypatch.setattr(gateway_cli, "is_linux", lambda: False)
+        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
+        monkeypatch.setattr(gateway_cli, "is_windows", lambda: True)
+
+        calls = []
+        monkeypatch.setattr(gateway_cli, "windows_install", lambda force=False: calls.append(force))
+
+        gateway_cli.gateway_command(SimpleNamespace(gateway_command="install", force=True, system=False))
+
+        assert calls == [True]
+
 
 class TestGatewaySystemServiceRouting:
     def test_gateway_install_passes_system_flags(self, monkeypatch):

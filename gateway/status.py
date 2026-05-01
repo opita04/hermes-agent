@@ -87,10 +87,13 @@ def _looks_like_gateway_process(pid: int) -> bool:
         return False
 
     patterns = (
-        "hermes_cli.main gateway",
-        "hermes_cli/main.py gateway",
-        "hermes gateway",
+        "hermes_cli.main gateway run",
+        "hermes_cli/main.py gateway run",
+        "hermes_cli\\main.py gateway run",
+        "hermes gateway run",
         "gateway/run.py",
+        "gateway\\run.py",
+        "-m gateway.run",
     )
     return any(pattern in cmdline for pattern in patterns)
 
@@ -108,8 +111,11 @@ def _record_looks_like_gateway(record: dict[str, Any]) -> bool:
     patterns = (
         "hermes_cli.main gateway",
         "hermes_cli/main.py gateway",
+        "hermes_cli\\main.py gateway",
         "hermes gateway",
         "gateway/run.py",
+        "gateway\\run.py",
+        "-m gateway.run",
     )
     return any(pattern in cmdline for pattern in patterns)
 

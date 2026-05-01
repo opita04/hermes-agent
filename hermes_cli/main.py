@@ -3268,8 +3268,10 @@ def cmd_update(args):
         try:
             from gateway.status import get_running_pid, remove_pid_file
             from hermes_cli.gateway import (
-                get_service_name, get_launchd_plist_path, is_macos, is_linux,
-                refresh_launchd_plist_if_needed,
+                get_service_name, get_launchd_plist_path, is_macos, is_linux, is_windows,
+                refresh_launchd_plist_if_needed, find_windows_supervisor_pids,
+                windows_restart, windows_startup_command_exists, windows_task_exists,
+                windows_task_state,
                 _ensure_user_systemd_env, get_systemd_linger_status,
             )
             import signal as _signal
@@ -3279,16 +3281,18 @@ def cmd_update(args):
             has_systemd_service = False
             has_system_service = False
             has_launchd_service = False
+            has_windows_task = False
 
-            try:
-                _ensure_user_systemd_env()
-                check = subprocess.run(
-                    ["systemctl", "--user", "is-active", _gw_service_name],
-                    capture_output=True, text=True, timeout=5,
-                )
-                has_systemd_service = check.stdout.strip() == "active"
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                pass
+            if is_linux():
+                try:
+                    _ensure_user_systemd_env()
+                    check = subprocess.run(
+                        ["systemctl", "--user", "is-active", _gw_service_name],
+                        capture_output=True, text=True, timeout=5,
+                    )
+                    has_systemd_service = check.stdout.strip() == "active"
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    pass
 
             # Also check for a system-level service (hermes gateway install --system).
             # This covers gateways running under system systemd where --user
@@ -3300,6 +3304,19 @@ def cmd_update(args):
                         capture_output=True, text=True, timeout=5,
                     )
                     has_system_service = check.stdout.strip() == "active"
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    pass
+
+            # Check for Windows Scheduled Task supervisor
+            if is_windows():
+                try:
+                    has_windows_task = (
+                        windows_task_exists()
+                        and ((windows_task_state() or "").lower() == "running" or existing_pid is not None)
+                    ) or (
+                        windows_startup_command_exists()
+                        and (existing_pid is not None or bool(find_windows_supervisor_pids()))
+                    )
                 except (FileNotFoundError, subprocess.TimeoutExpired):
                     pass
 
@@ -3317,7 +3334,7 @@ def cmd_update(args):
                 except (FileNotFoundError, subprocess.TimeoutExpired):
                     pass
 
-            if existing_pid or has_systemd_service or has_system_service or has_launchd_service:
+            if existing_pid or has_systemd_service or has_system_service or has_launchd_service or has_windows_task:
                 print()
 
                 # When a service manager is handling the gateway, let it
@@ -3394,6 +3411,15 @@ def cmd_update(args):
                         print("✓ Gateway restarted via launchd.")
                     else:
                         print(f"⚠ Gateway restart failed: {start.stderr.strip()}")
+                        print("  Try manually: hermes gateway restart")
+                elif has_windows_task:
+                    print("→ Restarting Windows gateway task...")
+                    try:
+                        windows_restart()
+                        print("✓ Gateway restarted via Windows Task Scheduler.")
+                    except subprocess.CalledProcessError as e:
+                        detail = (getattr(e, "stderr", None) or str(e)).strip()
+                        print(f"⚠ Gateway restart failed: {detail}")
                         print("  Try manually: hermes gateway restart")
                 elif existing_pid:
                     try:
